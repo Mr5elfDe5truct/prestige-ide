@@ -1530,3 +1530,21 @@ body.no-sidebar #sidebar {
   font-size: 13.5px;
   border-top: 1px solid var(--line);
 }
+
+.git-btn {
+  font-family: var(--mono);
+  font-size: 12px;
+  gap: 8px;
+}
+.git-branch {
+  color: var(--text);
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.git-dirty {
+  color: var(--gold);
+}
+.git-ab {
+  color: var(--blue);
+}

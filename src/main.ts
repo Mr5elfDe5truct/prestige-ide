@@ -34,6 +34,7 @@ import { ChangesPane, sessionChanges } from "./ui/changes";
 import { TerminalPane } from "./ui/terminal";
 import { openSettings } from "./ui/settings";
 import { applyRewind, checkpoints, planRewind } from "./rewind";
+import { addWorktree, branches as gitBranches, createBranch, pull, push, slug, status as gitStatus, switchBranch, type GitStatus } from "./git";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const transcript = $("transcript");
@@ -340,6 +341,7 @@ async function setProject(path: string, remember = true) {
   if (remember) rememberProject(project);
   terminal.cwd = project;
   await files.setProject(project);
+  void drawGit();
 }
 
 async function pickFolder(): Promise<string | null> {
@@ -522,6 +524,7 @@ const SLASH: { cmd: string; hint: string }[] = [
   { cmd: "/model", hint: "pick a model" },
   { cmd: "/review", hint: "review the uncommitted changes for bugs" },
   { cmd: "/commit", hint: "write a commit message and commit the changes" },
+  { cmd: "/pr", hint: "push this branch and open a pull request with gh" },
   { cmd: "/help", hint: "what Prestige IDE can do" },
 ];
 
@@ -762,6 +765,9 @@ async function send() {
       case "/review":
         text = `Review the uncommitted changes in this repository (git diff, including staged). Look for real bugs: logic errors, edge cases, crashes, security problems, and broken behaviour. For each finding give the file:line, what goes wrong and when, and a suggested fix. Skip style nits. ${arg}`;
         break;
+      case "/pr":
+        text = `Open a pull request for the current branch. Check git status first: if there are uncommitted changes, ask me before committing them. If the branch is the repository's default branch, stop and tell me to create a branch first. Push the branch (git push -u origin HEAD), then run gh pr create with a clear title and a body that summarises the changes (from git log and git diff against the base branch) and how they were tested. Show me the PR URL at the end. ${arg}`;
+        break;
       case "/commit":
         text = `Look at git status and git diff, then stage the relevant changes and commit them with a clear, conventional commit message that explains why. Don't push. ${arg}`;
         break;
@@ -874,6 +880,7 @@ async function run(s: Session, model: ModelInfo) {
     drawCtx();
     drawTodos(s.todos);
     void files.refresh();
+    void drawGit();
     notifyIfHidden("Prestige IDE finished");
   }
   if (s.mode === "plan" && session === s) $("plan-bar").hidden = false;
@@ -1091,6 +1098,109 @@ $("think-btn").onclick = () => {
   }
   drawThink();
 };
+
+// ---------- git
+
+let gitState: GitStatus | null = null;
+
+async function drawGit() {
+  const b = $("git-btn");
+  const root = project;
+  const st = root ? await gitStatus(root).catch(() => null) : null;
+  if (root !== project) return; // the project changed while git was answering
+  gitState = st;
+  b.hidden = !st?.repo;
+  if (!st?.repo) return;
+  b.innerHTML = "";
+  b.append(h("span", "git-branch", "⎇ " + st.branch));
+  if (st.changed) b.append(h("span", "git-dirty", `● ${st.changed}`));
+  if (st.ahead) b.append(h("span", "git-ab", `↑${st.ahead}`));
+  if (st.behind) b.append(h("span", "git-ab", `↓${st.behind}`));
+  b.title = `${st.branch}${st.changed ? ` · ${st.changed} changed file(s)` : " · clean"}${st.upstream ? ` · ${st.ahead} ahead, ${st.behind} behind` : " · no upstream"}`;
+}
+
+async function gitAction(label: string, fn: () => Promise<{ ok: boolean; out: string }>) {
+  status(`${label}…`, true);
+  const r = await fn().catch((e) => ({ ok: false, out: String(e) }));
+  status(r.ok ? `${label}: done` : `${label} failed: ${r.out.split(/\r?\n/).slice(-2).join(" ").slice(0, 200)}`);
+  if (!r.ok) console.warn(r.out);
+  await drawGit();
+  void files.refresh();
+  return r.ok;
+}
+
+function sendPrompt(text: string) {
+  input.value = text;
+  void send();
+}
+
+$("git-btn").onclick = async () => {
+  await drawGit();
+  const st = gitState;
+  if (!st?.repo || !project) return;
+  const root = project;
+  const items: Parameters<typeof showMenu>[1] = [
+    `${st.branch}${st.changed ? ` · ${st.changed} changed` : " · clean"}`,
+    {
+      label: "Switch branch…",
+      action: async () => {
+        const { local, current } = await gitBranches(root);
+        showMenu(
+          $("git-btn"),
+          [
+            "Switch to",
+            ...local.map((name) => ({
+              label: name,
+              on: name === current,
+              action: async () => {
+                if (name === current) return;
+                if (st.changed && !confirm(`You have ${st.changed} uncommitted change(s). Git carries them over to ${name}, or refuses if they conflict. Switch?`)) return;
+                await gitAction(`Switch to ${name}`, () => switchBranch(root, name));
+              },
+            })),
+          ],
+        );
+      },
+    },
+    {
+      label: "New branch…",
+      action: async () => {
+        const name = slug(prompt("New branch name (your changes come with you)") ?? "");
+        if (name) await gitAction(`Create ${name}`, () => createBranch(root, name));
+      },
+    },
+    "sep",
+    { label: "Commit…", sub: "the agent stages and commits with a message", action: () => sendPrompt("/commit") },
+    { label: "Pull", sub: "fast-forward only", action: () => void gitAction("Pull", () => pull(root)) },
+    {
+      label: st.upstream ? `Push${st.ahead ? ` (${st.ahead})` : ""}` : "Push and set upstream",
+      action: () => void gitAction("Push", () => push(root, !st.upstream)),
+    },
+    { label: "Create pull request…", sub: "the agent pushes and opens one with gh", action: () => sendPrompt("/pr") },
+    "sep",
+    {
+      label: "New session in a worktree…",
+      sub: "a separate folder and branch, so work runs in parallel",
+      action: async () => {
+        const name = slug(prompt("Name for the new branch and worktree") ?? "");
+        if (!name) return;
+        status("Creating worktree…", true);
+        const r = await addWorktree(root, name);
+        if (!r.ok) {
+          status(`Couldn't create the worktree: ${r.out.slice(0, 200)}`);
+          return;
+        }
+        await setProject(r.path);
+        newSession();
+        status(`Worktree ready: ${r.path}`);
+      },
+    },
+  ];
+  if (st.remote) items.push({ label: "Copy remote URL", sub: st.remote, action: () => void navigator.clipboard.writeText(st.remote) });
+  showMenu($("git-btn"), items);
+};
+window.addEventListener("focus", () => void drawGit());
+setInterval(() => void drawGit(), 30000);
 
 // ---------- the side panel
 
