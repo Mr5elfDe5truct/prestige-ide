@@ -51,7 +51,7 @@ export async function runSubagent(
     }
     text = text.replace(/^\s*<think>[\s\S]*?<\/think>\s*/, "");
     if (!calls.length) {
-      const x = extractTextToolCalls(text);
+      const x = extractTextToolCalls(text, new Set(tools.map((t) => t.function.name)));
       calls = x.calls;
       text = x.text;
     }

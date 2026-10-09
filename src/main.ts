@@ -1381,3 +1381,5 @@ async function start() {
   input.focus();
 }
 void start();
+// The model bake-off's hook (bench/run.mjs); dev builds only, so it never ships.
+if (import.meta.env.DEV) void import("./bench");

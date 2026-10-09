@@ -198,29 +198,7 @@ async function readLines(body: ReadableStream<Uint8Array>, onLine: (line: string
   if (buf.trim()) onLine(buf.trim());
 }
 
-/** Some models (or templates) write tool calls into the text instead of the tool_calls field. Pull them out. */
-export function extractTextToolCalls(text: string): { text: string; calls: ToolCall[] } {
-  const calls: ToolCall[] = [];
-  const grab = (json: string) => {
-    try {
-      const j = JSON.parse(json.trim());
-      const name = j.name ?? j.function?.name ?? j.tool;
-      if (typeof name === "string") calls.push({ id: `text_${calls.length}`, name, arguments: parseArgs(j.arguments ?? j.parameters ?? j.function?.arguments ?? j.args ?? {}) });
-      return true;
-    } catch {
-      return false;
-    }
-  };
-  let out = text.replace(/<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/g, (all, body) => (grab(body) ? "" : all));
-  // Qwen3-Coder style: <function=name><parameter=x>value</parameter></function>
-  out = out.replace(/<function=([\w.-]+)>([\s\S]*?)<\/function>/g, (_all, name, body) => {
-    const args: any = {};
-    for (const m of String(body).matchAll(/<parameter=([\w.-]+)>\n?([\s\S]*?)\n?<\/parameter>/g)) args[m[1]] = m[2];
-    calls.push({ id: `text_${calls.length}`, name, arguments: args });
-    return "";
-  });
-  return { text: out.trim(), calls };
-}
+export { extractTextToolCalls } from "./toolparse";
 
 export interface StreamHandlers {
   onToken: (text: string) => void;

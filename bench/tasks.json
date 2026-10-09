@@ -1,0 +1,102 @@
+[
+  {
+    "id": "t01-fix-clips",
+    "kind": "bug fix · Python",
+    "project": "fixture",
+    "mode": "bypass",
+    "seed": [{ "file": "py/transcribe_clips.py", "find": "b = inside[-1] if inside", "replace": "b = inside[0] if inside" }],
+    "prompt": "Transcribing long recordings produces far more clips than it should: a speaker's stretch gets chopped into short pieces even when there's a pause close to the 18 second limit. Find and fix the bug in py/transcribe_clips.py.",
+    "check": ["python -m unittest discover -s .bench -p test_t1_clips.py", "python -m unittest discover -s py -p test_*.py"]
+  },
+  {
+    "id": "t02-fix-react",
+    "kind": "bug fix · TypeScript",
+    "project": "fixture",
+    "mode": "bypass",
+    "seed": [{ "file": "ts/emotes.ts", "find": "t.length < 26", "replace": "t.length < 8" }],
+    "prompt": "When a reply streams in small pieces, a leading reaction tag like [react: 😂] sometimes shows up in the chat text instead of becoming a reaction. It works when the tag arrives in one piece. Find and fix the bug in the ts/ code.",
+    "check": ["node --test .bench/t2_react.test.ts ts/*.test.ts"]
+  },
+  {
+    "id": "t03-fix-time",
+    "kind": "bug fix · TypeScript",
+    "project": "fixture",
+    "mode": "bypass",
+    "seed": [{ "file": "ts/genmath.ts", "find": "Math.round(min * 2) / 2", "replace": "Math.round(min / 2) * 2" }],
+    "prompt": "The render time estimates are off: a 150 second job shows \"about 2 min\" instead of \"about 2.5 min\", and 90 seconds shows \"about 2 min\" instead of \"about 1.5 min\". Fix it in ts/genmath.ts.",
+    "check": ["node --test .bench/t3_time.test.ts ts/*.test.ts"]
+  },
+  {
+    "id": "t04-fix-llamaini",
+    "kind": "bug fix · PowerShell",
+    "project": "fixture",
+    "mode": "bypass",
+    "seed": [{ "file": "ps/llamaini.ps1", "find": "[int]$Matches[2] -gt 16384", "replace": "[int]$Matches[2] -lt 16384" }],
+    "prompt": "On small GPUs the runtime llama.cpp config comes out wrong: a model set to c = 8192 ends up with c = 16384, and one set to c = 32768 keeps 32768. The cap is supposed to lower big contexts to 16384 and leave smaller ones alone. Fix ps/llamaini.ps1.",
+    "check": ["powershell -NoProfile -ExecutionPolicy Bypass -File .bench/t4_llamaini.ps1", "powershell -NoProfile -ExecutionPolicy Bypass -File ps/test_llamaini.ps1"]
+  },
+  {
+    "id": "t05-feat-merge",
+    "kind": "feature · Python",
+    "project": "fixture",
+    "mode": "bypass",
+    "prompt": "Add a function merge_segments(segs, gap=0.5) to py/transcribe_clips.py. segs is a list of diarization segments ({\"start\", \"end\", \"speaker\"} dicts, sorted by start). Merge each segment into the one before it when both are the same speaker and the silence between them (start minus the previous end) is shorter than gap seconds; a merged segment keeps the earlier start and the later end. Segments of different speakers are never merged. Return a new list and don't modify the input. Add a test for it next to the existing ones.",
+    "check": ["python -m unittest discover -s .bench -p test_t5_merge.py", "python -m unittest discover -s py -p test_*.py"]
+  },
+  {
+    "id": "t06-feat-fit",
+    "kind": "feature · TypeScript",
+    "project": "fixture",
+    "mode": "bypass",
+    "prompt": "Add and export fitWithin(w: number, h: number, maxSide: number, multiple = 16): [number, number] in ts/genmath.ts. It scales (w, h) down, keeping the aspect ratio, so the longer side is at most maxSide (it never scales up), then rounds each side down to a multiple of `multiple`, but never below `multiple` itself. Make sure the type-check and tests still pass.",
+    "check": ["node --test .bench/t6_fit.test.ts ts/*.test.ts", "npx tsc -p . --noEmit"]
+  },
+  {
+    "id": "t07-feat-tinycard",
+    "kind": "feature · PowerShell",
+    "project": "fixture",
+    "mode": "bypass",
+    "prompt": "In ps/llamaini.ps1, cards under 6 GB need an even smaller context. When $Plan.LlamaFit is on and $Plan.LlamaGB is below 6, cap c / ctx-size at 8192 instead of 16384 (contexts already at or under the cap stay as they are). Cards from 6 up to 10 GB keep the 16384 cap, and 10 GB and up aren't capped. Add checks for the new rule to ps/test_llamaini.ps1.",
+    "check": ["powershell -NoProfile -ExecutionPolicy Bypass -File .bench/t7_llamaini.ps1", "powershell -NoProfile -ExecutionPolicy Bypass -File ps/test_llamaini.ps1"]
+  },
+  {
+    "id": "t08-ask-ports",
+    "kind": "codebase question",
+    "project": "repo:custom-ai-workstation",
+    "mode": "plan",
+    "prompt": "Answer from the code in this repo, don't change anything: which port does the voice server listen on, and what does start-all.ps1 set OLLAMA_KV_CACHE_TYPE to?",
+    "answer": [["8890"], ["q8_0", "q8"]]
+  },
+  {
+    "id": "t09-ask-gpuplan",
+    "kind": "codebase question",
+    "project": "repo:custom-ai-workstation",
+    "mode": "plan",
+    "prompt": "Answer from the code in this repo, don't change anything: when start-all.ps1 has no GPU plan, what does it set OLLAMA_CONTEXT_LENGTH to? And which function, in which script, writes data\\runtime\\gpu.json?",
+    "answer": [["32768"], ["Save-GpuPlan"], ["gpu-config.ps1"]]
+  },
+  {
+    "id": "t10-ask-emotes",
+    "kind": "codebase question",
+    "project": "repo:prestige",
+    "mode": "plan",
+    "prompt": "Answer from the code in this repo, don't change anything: which file in src/ takes a leading [react: …] tag out of a streamed reply, and at most how many characters can the emoji text inside a tag be?",
+    "answer": [["emotes.ts"], ["16"]]
+  },
+  {
+    "id": "t11-refactor-rename",
+    "kind": "refactor · TypeScript",
+    "project": "fixture",
+    "mode": "bypass",
+    "prompt": "Rename reactFilter to createReactFilter everywhere in ts/ (the definition and every use), then make sure npm run typecheck and npm test both pass.",
+    "check": ["powershell -NoProfile -ExecutionPolicy Bypass -File .bench/t11_rename.ps1", "node --test ts/*.test.ts"]
+  },
+  {
+    "id": "t12-feat-cli",
+    "kind": "feature · Python",
+    "project": "fixture",
+    "mode": "bypass",
+    "prompt": "Make py/transcribe_clips.py runnable from the command line, without breaking imports: `python py/transcribe_clips.py SEGMENTS.json --total SECONDS [--cuts 5,10.5,...]` reads the segments (a JSON list of {\"start\", \"end\", \"speaker\"}), runs clips() with the given pause cut points (none if --cuts is left out), and prints each clip as one JSON object per line: {\"start\": …, \"end\": …, \"speaker\": …} with the times rounded to 2 decimals. Use argparse.",
+    "check": ["python -m unittest discover -s .bench -p test_t12_cli.py", "python -m unittest discover -s py -p test_*.py"]
+  }
+]

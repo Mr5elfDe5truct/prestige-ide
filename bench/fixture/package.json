@@ -1,0 +1,12 @@
+{
+  "name": "prestige-snippets",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test ts/*.test.ts",
+    "typecheck": "tsc -p . --noEmit"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

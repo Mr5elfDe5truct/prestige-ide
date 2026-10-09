@@ -195,7 +195,7 @@ export async function runAgent(s: Session, model: ModelInfo, ui: AgentUI, signal
     }
     let calls = result.toolCalls;
     if (!calls.length) {
-      const x = extractTextToolCalls(msg.content);
+      const x = extractTextToolCalls(msg.content, allowed);
       if (x.calls.length) {
         calls = x.calls;
         msg.content = x.text;
