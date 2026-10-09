@@ -1565,3 +1565,37 @@ body.no-sidebar #sidebar {
   flex: 1;
   min-width: 260px;
 }
+
+.update-bar {
+  margin: 8px max(24px, calc((100% - 860px) / 2)) 0;
+}
+.update-bar span {
+  flex: 1;
+}
+
+/* Narrow chat column (side panel open on a smaller window): chips shrink, then wrap, rather than clip. */
+.composer-bar {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+.composer-bar .chip-btn {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.composer-bar .chip-btn > span:last-child,
+#mode-btn,
+#think-btn {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.composer-bar .send {
+  margin-left: auto;
+}
+.chat-title-wrap {
+  min-width: 120px;
+}
+.git-btn {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}

@@ -36,6 +36,7 @@ import { openSettings } from "./ui/settings";
 import { applyRewind, checkpoints, planRewind } from "./rewind";
 import { config, loadConfig, trust, TEMPLATE } from "./config";
 import { runHooks } from "./hooks";
+import { appVersion, checkForUpdates } from "./updates";
 import { addWorktree, branches as gitBranches, createBranch, pull, push, slug, status as gitStatus, switchBranch, type GitStatus } from "./git";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -1344,6 +1345,7 @@ $("settings-btn").onclick = () =>
       drawMode();
     },
     { project, files: () => config().files, open: (p) => void openSettingsFile(p) },
+    { version: appVersion, check: () => checkForUpdates($("update-bar"), () => !!running) },
   );
 
 document.addEventListener("keydown", (e) => {
@@ -1372,6 +1374,8 @@ async function start() {
   void checkBackends();
   setInterval(() => void checkBackends(), 20000);
   if (settings.recentProjects[0]) await setProject(settings.recentProjects[0], false);
+  // Quietly look for a new version a few seconds after start (not in dev builds, which have nothing to update).
+  if (!import.meta.env.DEV) setTimeout(() => void checkForUpdates($("update-bar"), () => !!running), 4000);
   drawAll();
   autosize();
   input.focus();

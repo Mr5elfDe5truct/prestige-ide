@@ -11,6 +11,7 @@ export function openSettings(
   models: ModelInfo[],
   onSave: () => Promise<void>,
   cfg: { project: string; files: () => LoadedFile[]; open: (path: string) => void },
+  upd: { version: () => Promise<string>; check: () => Promise<string> },
 ) {
   dlg.innerHTML = "";
   const form = h("form", "settings-form");
@@ -124,6 +125,22 @@ export function openSettings(
   form.append(labelled("Ollama context (tokens)", "llama.cpp models use the context the router gives them", ctx));
   const swap = check(settings.swapBackends);
   form.append(labelled("Free VRAM when switching servers", "unload Ollama before a llama.cpp model and back. Turn on with one GPU", swap));
+
+  form.append(h("h3", "", "About"));
+  const about = h("div", "row");
+  const ver = h("span", "row-label", "Prestige IDE");
+  void upd.version().then((v) => (ver.textContent = `Prestige IDE ${v}`));
+  const updMsg = h("span", "row-hint", "Updates come from the GitHub releases, signed by R.G. Studios.");
+  const chk = h("button", "btn small", "Check for updates") as HTMLButtonElement;
+  chk.type = "button";
+  chk.onclick = async () => {
+    chk.disabled = true;
+    updMsg.textContent = "Checking…";
+    updMsg.textContent = await upd.check();
+    chk.disabled = false;
+  };
+  about.append(ver, updMsg, chk);
+  form.append(about);
 
   const bar = h("div", "dialog-bar");
   const cancel = h("button", "btn", "Cancel");
