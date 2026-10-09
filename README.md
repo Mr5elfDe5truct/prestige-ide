@@ -38,7 +38,7 @@
 | 🗂️ | **Sessions** | Every conversation saved on your PC, titled by the Mini model, grouped by date, searchable, pinnable, and resumable with its diffs and tool cards |
 | 🎚️ | **Model tiers** | **Deep**, **Main**, **Fast** and **Mini**, each mapped to any Ollama or llama.cpp model in Settings; switch per session from the model chip. 🔓 marks uncensored models |
 | 📎 | **@-mentions** | `@src/main.ts` attaches a file, `@src/main.ts:10-40` a range, `@src/` a folder listing, with autocomplete |
-| ⌨️ | **Slash commands** | `/init` writes a PRESTIGE.md for the project · `/compact` summarises to free context · `/review` reviews uncommitted changes · `/commit` · `/plan` · `/rewind` · `/model` · `/clear` · `/help`, plus your own in `.prestige/commands/*.md` (`$ARGUMENTS` is replaced) |
+| ⌨️ | **Slash commands** | `/init` writes a PRESTIGE.md for the project · `/compact` summarises to free context · `/review` reviews uncommitted changes · `/commit` · `/pr` · `/plan` · `/rewind` · `/model` · `/clear` · `/help`, plus your own in `.prestige/commands/*.md` (`$ARGUMENTS` is replaced) |
 | 📚 | **Project instructions** | `PRESTIGE.md`, `CLAUDE.md`, `AGENTS.md` or `.github/copilot-instructions.md` in the project root go into every prompt, with the git branch and status |
 | 🧠 | **Context that lasts** | A context meter on the composer; at 80% the conversation is summarised automatically and the work carries on |
 | 🧵 | **Message queue** | Type while it works: your message waits its turn. **Esc** stops, **↑** brings back your last message |
@@ -46,7 +46,42 @@
 | ↺ | **Checkpoints and rewind** | Every message is a checkpoint. Hover it and **Rewind** (or `/rewind`) to put back every file the agent changed since, as it was then, drop the later turns and edit the message. It tells you which commands ran since, because their effects can't be undone |
 | 🖼️ | **Pictures** | Paste, drop or attach screenshots and mockups for vision models (Qwen3.6 35B, Qwen3.8 27B and the other llama.cpp models here read them); resized to 1568 px |
 | ✻ | **Thinking on/off** | Per session from the composer. Off answers straight away: the same bug fix took 40 s instead of about 2½ minutes on Qwen3.6 35B |
+| 🤝 | **Subagents** | The `task` tool hands a research job to a helper with a fresh context and read-only tools; only its report comes back, so the main conversation stays small. Runs on the session's model, or a tier you pick (Fast runs on the second GPU) |
+| ⎇ | **Git** | A branch chip in the header with changed files and ahead/behind. Switch or create branches, pull (fast-forward only), push, `/commit`, `/pr` (opens a pull request with `gh`), and **New session in a worktree** for parallel work on its own branch |
+| 📜 | **Settings files and hooks** | `.prestige/settings.json` (see below) holds allow/deny rules and hooks that run PowerShell around the agent |
 | 🧩 | **Text tool-call fallback** | Models that write `<tool_call>` or `<function=…>` into their reply instead of the tool field still work |
+
+## 📜 Settings files and hooks
+
+Three files, merged in this order: `%USERPROFILE%\.prestige\settings.json` (yours, every project),
+`<project>\.prestige\settings.json` (the project's, shared in git) and `<project>\.prestige\settings.local.json`
+(yours, this project only). Open or create them from **Settings**.
+
+```json
+{
+  "permissions": {
+    "allow": ["run_command(npm test*)", "run_command(git status*)", "edit_file(src/**)"],
+    "deny": ["run_command(git push*)", "write_file(.env*)", "edit_file(.env*)"]
+  },
+  "hooks": {
+    "UserPromptSubmit": [{ "command": "Write-Output ('Branch: ' + (git branch --show-current))" }],
+    "PreToolUse": [{ "matcher": "run_command", "command": "if ($env:PRESTIGE_COMMAND -match 'Remove-Item') { 'No deleting here.'; exit 2 }" }],
+    "PostToolUse": [{ "matcher": "edit_file|write_file", "command": "if ($env:PRESTIGE_FILE -like '*.py') { python -m py_compile $env:PRESTIGE_FILE; if ($LASTEXITCODE) { exit 2 } }" }],
+    "Stop": [{ "command": "npm test 2>&1 | Out-Null; if ($LASTEXITCODE) { 'Tests fail: fix them before finishing.'; exit 2 }" }]
+  }
+}
+```
+
+- **Rules** are `tool` or `tool(pattern)`: a command glob for `run_command`, a path glob for file tools, `*` in tool names
+  (`browser__*`). Deny beats allow and applies even in Bypass mode; allow skips the prompt. Chained commands
+  (`;`, `|`, `&&`) always ask. A path rule only covers the file tools, not a shell command that writes the same file.
+- **Hooks** are PowerShell, run in the project folder, with `PRESTIGE_EVENT`, `PRESTIGE_TOOL`, `PRESTIGE_FILE`,
+  `PRESTIGE_COMMAND`, `PRESTIGE_PROJECT` and the whole event as JSON in `PRESTIGE_HOOK_INPUT`. Exit 0 carries on
+  (PostToolUse output goes to the model, UserPromptSubmit output is added to your message); **exit 2 blocks** and the
+  output says why (PreToolUse: the call doesn't run; UserPromptSubmit: the message isn't sent; Stop: the agent keeps
+  working, up to 3 times). `matcher` is a regex on the tool name.
+- **Trust:** a project file that adds allow rules or hooks does nothing until you trust it (a banner asks), and asks again
+  whenever it changes. Its deny rules apply straight away.
 
 ## 🖥️ Requirements
 

@@ -3,8 +3,15 @@ import { settings, TIERS, type PermissionMode, type Tier } from "../store";
 import type { ModelInfo } from "../backends";
 import { h } from "./transcript";
 import { discover } from "../mcp";
+import { homeDir } from "@tauri-apps/api/path";
+import type { LoadedFile } from "../config";
 
-export function openSettings(dlg: HTMLDialogElement, models: ModelInfo[], onSave: () => Promise<void>) {
+export function openSettings(
+  dlg: HTMLDialogElement,
+  models: ModelInfo[],
+  onSave: () => Promise<void>,
+  cfg: { project: string; files: () => LoadedFile[]; open: (path: string) => void },
+) {
   dlg.innerHTML = "";
   const form = h("form", "settings-form");
   form.method = "dialog";
@@ -82,6 +89,35 @@ export function openSettings(dlg: HTMLDialogElement, models: ModelInfo[], onSave
   };
   mcpUrl.onchange = () => void loadMcp();
   void loadMcp();
+
+  form.append(h("h3", "", "Permission rules and hooks"));
+  form.append(
+    h("p", "hint", 'Settings files hold "allow" and "deny" rules (e.g. run_command(npm test*), edit_file(src/**), browser__*) and hooks: PowerShell that runs on PreToolUse, PostToolUse, UserPromptSubmit and Stop. Exit code 2 from a hook blocks and its output says why. Deny rules always apply; a project file\'s allow rules and hooks wait until you trust it.'),
+  );
+  const fileList = h("div", "mcp-list");
+  const loaded = cfg.files();
+  for (const f of loaded) {
+    const state = !f.ok ? `invalid JSON: ${f.error}` : f.needsTrust ? "not trusted yet: only its deny rules apply" : "active";
+    const b = h("button", "btn small", "Open") as HTMLButtonElement;
+    b.type = "button";
+    b.onclick = () => cfg.open(f.path);
+    fileList.append(labelled(`${f.scope}: ${f.path}`, state, b));
+  }
+  if (!loaded.length) fileList.append(h("p", "hint", "No settings files yet."));
+  form.append(fileList);
+  const newBar = h("div", "dialog-bar left");
+  const mk = (label: string, path: () => Promise<string>) => {
+    const b = h("button", "btn small", label) as HTMLButtonElement;
+    b.type = "button";
+    b.onclick = async () => cfg.open(await path());
+    newBar.append(b);
+  };
+  mk("Your settings file", async () => `${(await homeDir()).replace(/\\/g, "/").replace(/\/$/, "")}/.prestige/settings.json`);
+  if (cfg.project) {
+    mk("Project settings (shared)", async () => `${cfg.project}/.prestige/settings.json`);
+    mk("Project settings (just you)", async () => `${cfg.project}/.prestige/settings.local.json`);
+  }
+  form.append(newBar);
 
   form.append(h("h3", "", "Models"));
   const ctx = num(settings.ollamaCtx, 2048, 262144);

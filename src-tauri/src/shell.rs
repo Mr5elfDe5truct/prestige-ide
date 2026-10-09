@@ -46,6 +46,7 @@ pub fn run_command(
     cwd: String,
     command: String,
     timeout_ms: Option<u64>,
+    env: Option<HashMap<String, String>>,
 ) -> Result<CmdResult, String> {
     let mut c = Command::new("powershell.exe");
     c.args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command"])
@@ -54,6 +55,7 @@ pub fn run_command(
             "[Console]::OutputEncoding=[Text.Encoding]::UTF8; $ProgressPreference='SilentlyContinue'; {command}"
         ))
         .current_dir(&cwd)
+        .envs(env.unwrap_or_default())
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());

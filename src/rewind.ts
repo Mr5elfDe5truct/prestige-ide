@@ -13,7 +13,7 @@ export interface RewindPlan {
 export function checkpoints(s: Session): { index: number; msg: StoredMessage }[] {
   return s.messages
     .map((msg, index) => ({ msg, index }))
-    .filter(({ msg }) => msg.role === "user" && !msg.summary && !msg.archived)
+    .filter(({ msg }) => msg.role === "user" && !msg.summary && !msg.hook && !msg.archived)
     .reverse();
 }
 

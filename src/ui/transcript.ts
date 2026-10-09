@@ -64,6 +64,11 @@ function fmtStats(s?: StreamStats, model?: string): string {
 }
 
 export function userBubble(m: StoredMessage, onRewind?: () => void): HTMLElement {
+  if (m.hook) {
+    const row = h("div", "turn hook-note");
+    row.textContent = m.content;
+    return row;
+  }
   const row = h("div", m.summary ? "turn summary" : "turn user");
   if (m.summary) {
     const d = h("details", "summary-box");
@@ -75,7 +80,7 @@ export function userBubble(m: StoredMessage, onRewind?: () => void): HTMLElement
     return row;
   }
   const b = h("div", "bubble");
-  b.textContent = m.content.replace(/\n\n<attached-files>[\s\S]*<\/attached-files>$/, "");
+  b.textContent = m.content.replace(/\n\n<hook-context>[\s\S]*?<\/hook-context>/, "").replace(/\n\n<attached-files>[\s\S]*<\/attached-files>$/, "");
   const files = m.content.match(/<file path="([^"]+)"/g);
   if (files) {
     const chips = h("div", "chips");

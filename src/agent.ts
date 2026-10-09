@@ -5,6 +5,8 @@ import { complete, errMsg, extractTextToolCalls, streamChat, type ChatMessage, t
 import { settings, type Session, type StoredMessage, type Todo, type ToolMeta } from "./store";
 import { allowRuleFor, needsApproval, runTool, toolSchemas } from "./tools";
 import { runSubagent } from "./subagent";
+import { decide } from "./config";
+import { runHooks } from "./hooks";
 
 export type Approval = { allow: true; always?: boolean } | { allow: false; feedback?: string };
 
@@ -29,6 +31,7 @@ export interface AgentUI {
   status(text: string): void;
   save(): void;
   subagentModel(): ModelInfo; // the model subagents run on
+  note(msg: StoredMessage): void; // a message added by a hook
 }
 
 const PROJECT_FILES = ["PRESTIGE.md", "CLAUDE.md", "AGENTS.md", ".github/copilot-instructions.md"];
@@ -148,6 +151,7 @@ export async function runAgent(s: Session, model: ModelInfo, ui: AgentUI, signal
   const system = await systemPrompt(s, model);
   const tools = await toolSchemas(s.mode);
   const allowed = new Set(tools.map((t) => t.function.name));
+  let stopHookRounds = 0;
   for (let turn = 0; turn < settings.maxTurns; turn++) {
     if (signal.aborted) return;
     const msg: StoredMessage = { role: "assistant", content: "", thinking: "", modelName: model.name, at: Date.now() };
@@ -201,7 +205,21 @@ export async function runAgent(s: Session, model: ModelInfo, ui: AgentUI, signal
     msg.stats = { tokens: result.tokens, tps: result.tps, seconds: result.seconds, promptTokens: result.promptTokens };
     view.end(msg);
     ui.save();
-    if (!calls.length) return;
+    if (!calls.length) {
+      if (stopHookRounds < 3) {
+        const st = await runHooks("Stop", s.project, {});
+        st.warnings.forEach((w) => ui.status(w));
+        if (st.blocked && !signal.aborted) {
+          stopHookRounds++;
+          const note: StoredMessage = { role: "user", content: `[Stop hook] ${st.output}`, at: Date.now(), hook: true };
+          s.messages.push(note);
+          ui.note(note);
+          ui.save();
+          continue;
+        }
+      }
+      return;
+    }
 
     let stop = false;
     for (const call of calls) {
@@ -222,7 +240,22 @@ export async function runAgent(s: Session, model: ModelInfo, ui: AgentUI, signal
       }
       s.messages.push(tmsg);
       const tv = ui.tool(call, tmsg);
-      if (needsApproval(call.name, call.arguments, s.mode, s.allow)) {
+      const rule = decide(call.name, call.arguments, s.project);
+      if (rule?.decision === "deny") {
+        tmsg.content = `Denied by the rule "${rule.rule}" in the settings files. Don't retry it or work around it (for example with a shell command): tell the user it's blocked and ask how to proceed.`;
+        tmsg.meta = { ok: false, denied: true };
+        tv.end(tmsg);
+        continue;
+      }
+      const pre = await runHooks("PreToolUse", s.project, { tool: call.name, args: call.arguments });
+      pre.warnings.forEach((w) => ui.status(w));
+      if (pre.blocked) {
+        tmsg.content = `Blocked by a PreToolUse hook: ${pre.output}`;
+        tmsg.meta = { ok: false, denied: true };
+        tv.end(tmsg);
+        continue;
+      }
+      if (rule?.decision !== "allow" && needsApproval(call.name, call.arguments, s.mode, s.allow)) {
         const a = await ui.approve(call);
         if (signal.aborted) {
           tmsg.content = "Not run: the user interrupted.";
@@ -265,6 +298,9 @@ export async function runAgent(s: Session, model: ModelInfo, ui: AgentUI, signal
       });
       tmsg.content = r.content;
       tmsg.meta = r.meta;
+      const post = await runHooks("PostToolUse", s.project, { tool: call.name, args: call.arguments, result: r.content });
+      post.warnings.forEach((w) => ui.status(w));
+      if (post.output) tmsg.content += `\n\n[PostToolUse hook${post.blocked ? " reported a problem" : ""}]\n${post.output}`;
       tv.end(tmsg);
       if (r.meta.path && r.meta.after !== undefined) ui.fileChanged(r.meta.path, r.meta);
       ui.save();

@@ -27,6 +27,7 @@ export interface Settings {
   mcpEnabled: string[]; // the servers whose tools the agent gets
   think: boolean; // new sessions let the model think first
   subagentTier: Tier | "same"; // the model subagents use: the session's own, or a tier (Fast runs on the second GPU)
+  trustedConfigs: Record<string, string>; // project settings files the user trusted: lower-cased path -> content hash
 }
 
 export const settings: Settings = {
@@ -50,6 +51,7 @@ export const settings: Settings = {
   mcpEnabled: ["workstation", "browser", "time"],
   think: true,
   subagentTier: "same",
+  trustedConfigs: {},
 };
 
 export async function loadSettings(): Promise<boolean> {
@@ -88,6 +90,7 @@ export interface StoredMessage extends ChatMessage {
   modelName?: string;
   archived?: boolean | number; // compacted away: shown, but not sent to the model (the number is the summary's `at`)
   summary?: boolean; // the summary that replaced archived messages
+  hook?: boolean; // added by a hook, not typed by the user
   at?: number;
 }
 

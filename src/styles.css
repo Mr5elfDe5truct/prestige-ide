@@ -1548,3 +1548,20 @@ body.no-sidebar #sidebar {
 .git-ab {
   color: var(--blue);
 }
+
+.turn.hook-note {
+  font: 12px/1.5 var(--mono);
+  color: var(--gold);
+  border-left: 2px solid var(--gold);
+  padding: 4px 10px;
+  white-space: pre-wrap;
+}
+.dialog-bar.left {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  margin-top: 8px;
+}
+.trust-bar span {
+  flex: 1;
+  min-width: 260px;
+}

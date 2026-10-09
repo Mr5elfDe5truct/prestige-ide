@@ -34,6 +34,8 @@ import { ChangesPane, sessionChanges } from "./ui/changes";
 import { TerminalPane } from "./ui/terminal";
 import { openSettings } from "./ui/settings";
 import { applyRewind, checkpoints, planRewind } from "./rewind";
+import { config, loadConfig, trust, TEMPLATE } from "./config";
+import { runHooks } from "./hooks";
 import { addWorktree, branches as gitBranches, createBranch, pull, push, slug, status as gitStatus, switchBranch, type GitStatus } from "./git";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -342,6 +344,7 @@ async function setProject(path: string, remember = true) {
   terminal.cwd = project;
   await files.setProject(project);
   void drawGit();
+  await refreshConfig();
 }
 
 async function pickFolder(): Promise<string | null> {
@@ -795,8 +798,20 @@ async function send() {
   const s = ensureSession();
   if (!s.modelKey) s.modelKey = model.key;
   const firstPrompt = !s.messages.length;
-  const content = await withMentions(text);
-  const userMsg: StoredMessage = { role: "user", content, at: Date.now() };
+  await refreshConfig();
+  const hook = await runHooks("UserPromptSubmit", project, { prompt: text });
+  hook.warnings.forEach((w) => status(w));
+  if (hook.blocked) {
+    const err = h("div", "turn error");
+    err.textContent = `A UserPromptSubmit hook blocked this message: ${hook.output}`;
+    transcript.append(err);
+    input.value = text;
+    autosize();
+    return;
+  }
+  const content = (hook.output ? `${text}\n\n<hook-context>\n${hook.output}\n</hook-context>` : text);
+  const withFiles = await withMentions(content);
+  const userMsg: StoredMessage = { role: "user", content: withFiles, at: Date.now() };
   if (attachments.length) userMsg.images = attachments.splice(0);
   drawAttachments();
   s.messages.push(userMsg);
@@ -860,6 +875,10 @@ async function run(s: Session, model: ModelInfo) {
     save() {
       void saveSession(s);
       drawCtx();
+    },
+    note(msg) {
+      transcript.append(userBubble(msg));
+      scroll();
     },
     subagentModel() {
       return (settings.subagentTier !== "same" && modelFor(settings.tiers[settings.subagentTier])) || model;
@@ -1099,6 +1118,40 @@ $("think-btn").onclick = () => {
   drawThink();
 };
 
+// ---------- settings files
+
+async function refreshConfig() {
+  const eff = await loadConfig(project).catch(() => null);
+  const bar = $("trust-bar");
+  const pending = eff?.files.filter((f) => f.needsTrust) ?? [];
+  bar.hidden = !pending.length;
+  if (!pending.length) return;
+  const f = pending[0];
+  const allow = f.config.permissions?.allow?.length ?? 0;
+  const hooks = Object.values(f.config.hooks ?? {}).reduce((n, l) => n + (l?.length ?? 0), 0);
+  bar.innerHTML = "";
+  bar.append(
+    h("span", "", `${relPath(project, f.path)} wants to ${[allow ? `auto-approve ${allow} rule(s)` : "", hooks ? `run ${hooks} hook command(s)` : ""].filter(Boolean).join(" and ")}. It's ignored until you trust it.`),
+  );
+  const review = h("button", "btn small", "Review");
+  review.onclick = () => openPath(f.path);
+  const ok = h("button", "btn small primary", "Trust this file");
+  ok.onclick = async () => {
+    await trust(f);
+    await refreshConfig();
+    status(`Trusted ${relPath(project, f.path)}. If it changes, you'll be asked again.`);
+  };
+  bar.append(review, ok);
+}
+
+/** Opens a settings file in the editor, creating it from the template first if it doesn't exist. */
+async function openSettingsFile(path: string) {
+  if (!(await invoke<boolean>("fs_exists", { path }))) await invoke("fs_write", { path, content: TEMPLATE });
+  $<HTMLDialogElement>("settings").close();
+  openPath(path);
+  await refreshConfig();
+}
+
 // ---------- git
 
 let gitState: GitStatus | null = null;
@@ -1282,11 +1335,16 @@ try {
 
 $("toggle-sidebar").onclick = () => document.body.classList.toggle("no-sidebar");
 $("settings-btn").onclick = () =>
-  openSettings($<HTMLDialogElement>("settings"), models, async () => {
-    await saveSettings();
-    await refreshModels();
-    drawMode();
-  });
+  openSettings(
+    $<HTMLDialogElement>("settings"),
+    models,
+    async () => {
+      await saveSettings();
+      await refreshModels();
+      drawMode();
+    },
+    { project, files: () => config().files, open: (p) => void openSettingsFile(p) },
+  );
 
 document.addEventListener("keydown", (e) => {
   if (!e.ctrlKey) return;

@@ -10,6 +10,9 @@ Tauri 2 desktop app: TypeScript + Vite front end (`src/`), Rust back end (`src-t
 ## Architecture
 - `src/agent.ts` the agent loop and system prompt; `src/tools.ts` tool schemas, permissions and execution;
   `src/backends.ts` Ollama (:11434) and llama.cpp router (:8081) streaming with tool calls (shared shape with Prestige)
+- `src/subagent.ts` read-only research subagents (the `task` tool); `src/mcp.ts` MCP tools from an mcpo endpoint;
+  `src/rewind.ts` checkpoints; `src/git.ts` the branch chip's git commands; `src/config.ts` settings files (rules,
+  trust) and `src/hooks.ts` running hooks
 - `src/store.ts` settings and sessions, saved through Rust `data_*` commands in `%APPDATA%\com.rgstudios.prestige-ide`
 - `src/main.ts` sessions sidebar, composer, slash commands, @-mentions, side panel wiring
 - `src/ui/` transcript rendering, Files (Monaco), Changes (Monaco diff + revert), Terminal (xterm + ConPTY), settings
