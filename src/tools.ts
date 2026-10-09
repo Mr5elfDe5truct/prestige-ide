@@ -98,6 +98,16 @@ export const SPECS: ToolSpec[] = [
     ),
   },
   {
+    name: "task",
+    kind: "read",
+    description:
+      "Hand a self-contained research job to a subagent with a fresh context and read-only tools (read_file, list_dir, glob, grep, web, read-only MCP tools). Use it for broad searches across many files (\"where is X handled\", \"how does Y work end to end\", \"find every caller of Z\") so the reading doesn't fill this conversation. It can't change anything. Give it everything it needs in the prompt: it can't see this conversation. It returns a report.",
+    parameters: obj(
+      { description: str("3 to 6 words: what it's for"), prompt: str("The full job: what to find out, where to look, and what to report back") },
+      ["description", "prompt"],
+    ),
+  },
+  {
     name: "web_search",
     kind: "web",
     description: "Search the web (DuckDuckGo). Returns titles, addresses and snippets. Use web_fetch to read a page.",
@@ -381,6 +391,8 @@ export function describeCall(root: string, name: string, args: any): { verb: str
       return { verb: "Update todos", target: "" };
     case "web_search":
       return { verb: "Search", target: String(args.query ?? "") };
+    case "task":
+      return { verb: "Subagent", target: String(args.description ?? "") };
     case "web_fetch":
       return { verb: "Fetch", target: String(args.url ?? "") };
     default: {

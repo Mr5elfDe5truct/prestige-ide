@@ -41,6 +41,11 @@ export function openSettings(dlg: HTMLDialogElement, models: ModelInfo[], onSave
     mode.append(new Option(l, v));
   mode.value = settings.defaultMode;
   form.append(labelled("Default permission mode", "", mode));
+  const subTier = h("select") as HTMLSelectElement;
+  subTier.append(new Option("Same as the session", "same"));
+  for (const t of TIERS) subTier.append(new Option(t.label, t.id));
+  subTier.value = settings.subagentTier;
+  form.append(labelled("Subagent model", "Fast runs on the second GPU, so it doesn't swap out the main model; the session's model is smarter", subTier));
   const turns = num(settings.maxTurns, 5, 500);
   form.append(labelled("Steps per request", "most model turns before it stops and asks to continue", turns));
   const auto = check(settings.autoCompact);
@@ -98,6 +103,7 @@ export function openSettings(dlg: HTMLDialogElement, models: ModelInfo[], onSave
     settings.defaultTier = defTier.value as Tier;
     settings.defaultMode = mode.value as PermissionMode;
     settings.maxTurns = Number(turns.value) || 60;
+    settings.subagentTier = subTier.value as Tier | "same";
     settings.autoCompact = auto.checked;
     settings.webTools = web.checked;
     settings.ollamaCtx = Number(ctx.value) || 32768;

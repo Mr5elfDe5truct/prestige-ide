@@ -242,6 +242,10 @@ export function toolCard(call: ToolCall, m: StoredMessage, hooks: ToolCardHooks)
         const cmd = h("pre", "tool-cmd", "> " + String(call.arguments?.command ?? ""));
         live = h("pre", "tool-out");
         body.append(cmd, live);
+      } else if (call.name === "task") {
+        card.classList.add("open");
+        live = h("pre", "tool-out sub-steps");
+        body.append(live);
       } else if (call.name === "edit_file" || call.name === "write_file") {
         // Show what's about to change while it waits for approval.
         const a = call.arguments ?? {};
@@ -287,6 +291,13 @@ export function toolCard(call: ToolCall, m: StoredMessage, hooks: ToolCardHooks)
     }
     if (call.name === "todo_write") {
       card.classList.add("compact");
+    }
+    if (call.name === "task") {
+      const rep = h("div", "md sub-report");
+      renderMarkdown(rep, msg.content);
+      body.append(rep);
+      if (!meta.ok) card.classList.add("open");
+      return;
     }
     const out = h("pre", "tool-out");
     const text = msg.content;

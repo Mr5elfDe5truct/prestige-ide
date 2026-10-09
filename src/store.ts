@@ -26,6 +26,7 @@ export interface Settings {
   mcpUrl: string; // an mcpo endpoint; each of its MCP servers becomes a group of tools
   mcpEnabled: string[]; // the servers whose tools the agent gets
   think: boolean; // new sessions let the model think first
+  subagentTier: Tier | "same"; // the model subagents use: the session's own, or a tier (Fast runs on the second GPU)
 }
 
 export const settings: Settings = {
@@ -48,6 +49,7 @@ export const settings: Settings = {
   // filesystem, desktop and fetch duplicate the built-in tools, so they start off.
   mcpEnabled: ["workstation", "browser", "time"],
   think: true,
+  subagentTier: "same",
 };
 
 export async function loadSettings(): Promise<boolean> {

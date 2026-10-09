@@ -855,6 +855,9 @@ async function run(s: Session, model: ModelInfo) {
       void saveSession(s);
       drawCtx();
     },
+    subagentModel() {
+      return (settings.subagentTier !== "same" && modelFor(settings.tiers[settings.subagentTier])) || model;
+    },
   };
   try {
     await runAgent(s, model, ui, running.signal);

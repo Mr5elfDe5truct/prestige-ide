@@ -4,6 +4,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { complete, errMsg, extractTextToolCalls, streamChat, type ChatMessage, type ModelInfo, type StreamStats, type ToolCall } from "./backends";
 import { settings, type Session, type StoredMessage, type Todo, type ToolMeta } from "./store";
 import { allowRuleFor, needsApproval, runTool, toolSchemas } from "./tools";
+import { runSubagent } from "./subagent";
 
 export type Approval = { allow: true; always?: boolean } | { allow: false; feedback?: string };
 
@@ -27,6 +28,7 @@ export interface AgentUI {
   fileChanged(path: string, meta: ToolMeta): void;
   status(text: string): void;
   save(): void;
+  subagentModel(): ModelInfo; // the model subagents run on
 }
 
 const PROJECT_FILES = ["PRESTIGE.md", "CLAUDE.md", "AGENTS.md", ".github/copilot-instructions.md"];
@@ -72,6 +74,7 @@ export async function systemPrompt(s: Session, model: ModelInfo): Promise<string
 - Use the tools to look at the real code before answering questions about it or changing it. Never guess file contents.
 - Search with glob and grep, then read the relevant files. Prefer edit_file for changes; read a file first so old_string matches exactly.
 - Make the change the user asked for, completely, and no more. Match the surrounding code's style, naming and comment density.
+- For broad questions that need many files read ("how does X work", "where is Y used"), hand the research to a subagent with the task tool and work from its report. Do small, targeted lookups yourself.
 ${s.mode === "plan" ? "" : "- For multi-step work, keep a todo list with todo_write and update it as you go.\n"}- After changing code, verify it when you can (build, type-check, run the tests) with run_command, and fix what breaks.
 - Don't start long-running servers or interactive programs with run_command; tell the user the command to run instead.
 - If something is ambiguous and the choice matters, ask one short question instead of guessing.
@@ -238,6 +241,17 @@ export async function runAgent(s: Session, model: ModelInfo, ui: AgentUI, signal
           continue;
         }
         if (a.always) s.allow.push(allowRuleFor(call.name, call.arguments));
+      }
+      if (call.name === "task") {
+        const sub = ui.subagentModel();
+        ui.status(`Subagent working on ${sub.name}…`);
+        const out = await runSubagent(s.project, sub, String(call.arguments?.prompt ?? ""), signal, (line) => tv.output(line + "\n"));
+        tmsg.content = out.report;
+        tmsg.meta = { ok: out.ok };
+        tv.end(tmsg);
+        ui.save();
+        if (signal.aborted) return;
+        continue;
       }
       ui.status(`Running ${call.name}…`);
       const r = await runTool(call.name, call.arguments ?? {}, {
