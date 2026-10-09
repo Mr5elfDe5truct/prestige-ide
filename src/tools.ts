@@ -3,10 +3,11 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { errMsg, http } from "./backends";
 import { settings, type PermissionMode, type ToolMeta, type Todo } from "./store";
+import { callTool, enabledTools, findTool } from "./mcp";
 
 export const MCPO = "http://127.0.0.1:8200";
 
-export type Kind = "read" | "edit" | "exec" | "web" | "meta";
+export type Kind = "read" | "edit" | "exec" | "web" | "meta" | "mcp";
 
 interface ToolSpec {
   name: string;
@@ -110,14 +111,21 @@ export const SPECS: ToolSpec[] = [
   },
 ];
 
-export function toolSchemas(mode: PermissionMode): any[] {
-  return SPECS.filter((s) => settings.webTools || s.kind !== "web")
+export async function toolSchemas(mode: PermissionMode): Promise<any[]> {
+  const builtIn = SPECS.filter((s) => settings.webTools || s.kind !== "web")
     .filter((s) => mode !== "plan" || s.kind === "read" || s.kind === "web")
     .map((s) => ({ type: "function", function: { name: s.name, description: s.description, parameters: s.parameters } }));
+  const mcp = (await enabledTools())
+    .filter((t) => mode !== "plan" || t.readOnly)
+    .map((t) => ({ type: "function", function: { name: t.name, description: `[${t.server}] ${t.description}`, parameters: t.parameters } }));
+  return [...builtIn, ...mcp];
 }
 
 export function kindOf(name: string): Kind | undefined {
-  return SPECS.find((s) => s.name === name)?.kind;
+  const spec = SPECS.find((s) => s.name === name);
+  if (spec) return spec.kind;
+  const t = findTool(name);
+  return t ? (t.readOnly ? "read" : "mcp") : undefined;
 }
 
 /** The rule an approval adds when the user says "don't ask again" for this call. */
@@ -142,7 +150,7 @@ export function needsApproval(name: string, args: any, mode: PermissionMode, all
     if (/[;&|`]|\$\(/.test(cmd)) return true;
     return !allow.some((r) => r.startsWith("run_command:") && cmd.startsWith(r.slice("run_command:".length)));
   }
-  return true;
+  return !allow.includes(`${name}:*`);
 }
 
 // ---- paths
@@ -337,8 +345,14 @@ export async function runTool(name: string, args: any, ctx: ToolContext): Promis
         const text = await mcpo("/fetch/fetch", { url: String(args.url ?? ""), max_length: 12000, start_index: Number(args.start_index) || 0 }, 60000);
         return done(text);
       }
-      default:
+      default: {
+        const t = findTool(name);
+        if (t) {
+          const r = await callTool(t, args, ctx.signal);
+          return r.ok ? done(r.text) : fail(r.text);
+        }
         return fail(`there is no tool called "${name}". Available: ${SPECS.map((s) => s.name).join(", ")}`);
+      }
     }
   } catch (e) {
     return fail(errMsg(e) === "not reachable" && kindOf(name) === "web" ? "the Workstation tool server (:8200) is not running" : errMsg(e));
@@ -369,7 +383,10 @@ export function describeCall(root: string, name: string, args: any): { verb: str
       return { verb: "Search", target: String(args.query ?? "") };
     case "web_fetch":
       return { verb: "Fetch", target: String(args.url ?? "") };
-    default:
+    default: {
+      const t = findTool(name);
+      if (t) return { verb: `${t.server} · ${t.op}`, target: JSON.stringify(args ?? {}).slice(0, 100) };
       return { verb: name, target: JSON.stringify(args).slice(0, 80) };
+    }
   }
 }

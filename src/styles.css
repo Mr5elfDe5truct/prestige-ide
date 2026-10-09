@@ -1432,3 +1432,91 @@ body.no-sidebar #sidebar {
   position: absolute;
   inset: 6px 4px 4px 10px;
 }
+
+.mcp-list {
+  color: var(--text-3);
+  font-size: 13px;
+}
+.row input[type="text"],
+.row input:not([type]) {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  padding: 5px 8px;
+  font: 13px var(--mono);
+  width: 100%;
+}
+
+.turn.user {
+  align-items: flex-start;
+  gap: 8px;
+}
+.rewind-btn {
+  opacity: 0;
+  border: 1px solid var(--line);
+  background: var(--bg-2);
+  color: var(--text-3);
+  border-radius: 7px;
+  padding: 2px 8px;
+  font-size: 12px;
+  margin-top: 6px;
+  transition: opacity 0.12s;
+}
+.turn.user:hover .rewind-btn {
+  opacity: 1;
+}
+.rewind-btn:hover {
+  color: var(--gold);
+  border-color: var(--gold);
+}
+.pics {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+.pic {
+  max-width: 220px;
+  max-height: 160px;
+  border-radius: 8px;
+  border: 1px solid var(--line-2);
+  object-fit: cover;
+}
+.attachments {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.attachment {
+  position: relative;
+}
+.attachment img {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--line-2);
+  display: block;
+}
+.attachment .tab-x {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  background: var(--bg-4);
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  font-size: 12px;
+  line-height: 18px;
+}
+.composer.drop {
+  border-color: var(--gold);
+  box-shadow: 0 0 0 2px var(--gold-soft);
+}
+.chip-btn.think-off {
+  color: var(--text-3);
+  text-decoration: line-through;
+}

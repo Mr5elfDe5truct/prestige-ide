@@ -136,12 +136,15 @@ export async function compact(s: Session, model: ModelInfo, focus = "", signal?:
     ],
     signal,
   );
-  for (const m of live) m.archived = true;
-  s.messages.push({ role: "user", content: `This session was compacted. Summary of the conversation so far:\n\n${summary}`, summary: true, at: Date.now() });
+  const at = Date.now();
+  for (const m of live) m.archived = at;
+  s.messages.push({ role: "user", content: `This session was compacted. Summary of the conversation so far:\n\n${summary}`, summary: true, at });
 }
 
 export async function runAgent(s: Session, model: ModelInfo, ui: AgentUI, signal: AbortSignal): Promise<void> {
   const system = await systemPrompt(s, model);
+  const tools = await toolSchemas(s.mode);
+  const allowed = new Set(tools.map((t) => t.function.name));
   for (let turn = 0; turn < settings.maxTurns; turn++) {
     if (signal.aborted) return;
     const msg: StoredMessage = { role: "assistant", content: "", thinking: "", modelName: model.name, at: Date.now() };
@@ -164,7 +167,8 @@ export async function runAgent(s: Session, model: ModelInfo, ui: AgentUI, signal
           onStats: (st) => view.stats(st),
         },
         signal,
-        toolSchemas(s.mode),
+        tools,
+        { think: s.think === false ? false : undefined },
       );
     } catch (e) {
       if (signal.aborted) {
@@ -206,7 +210,7 @@ export async function runAgent(s: Session, model: ModelInfo, ui: AgentUI, signal
         ui.tool(call, tmsg).end(tmsg);
         continue;
       }
-      if (s.mode === "plan" && !toolSchemas("plan").some((t) => t.function.name === call.name)) {
+      if (s.mode === "plan" && !allowed.has(call.name)) {
         tmsg.content = "Plan mode is on: changing files and running commands is not allowed. Finish investigating and present your plan.";
         tmsg.meta = { ok: false, denied: true };
         s.messages.push(tmsg);

@@ -23,6 +23,9 @@ export interface Settings {
   maxTurns: number;
   webTools: boolean;
   userName: string;
+  mcpUrl: string; // an mcpo endpoint; each of its MCP servers becomes a group of tools
+  mcpEnabled: string[]; // the servers whose tools the agent gets
+  think: boolean; // new sessions let the model think first
 }
 
 export const settings: Settings = {
@@ -41,6 +44,10 @@ export const settings: Settings = {
   maxTurns: 60,
   webTools: true,
   userName: "",
+  mcpUrl: "http://127.0.0.1:8200",
+  // filesystem, desktop and fetch duplicate the built-in tools, so they start off.
+  mcpEnabled: ["workstation", "browser", "time"],
+  think: true,
 };
 
 export async function loadSettings(): Promise<boolean> {
@@ -77,7 +84,7 @@ export interface StoredMessage extends ChatMessage {
   stats?: StreamStats;
   meta?: ToolMeta;
   modelName?: string;
-  archived?: boolean; // compacted away: shown, but not sent to the model
+  archived?: boolean | number; // compacted away: shown, but not sent to the model (the number is the summary's `at`)
   summary?: boolean; // the summary that replaced archived messages
   at?: number;
 }
@@ -99,6 +106,7 @@ export interface Session {
   todos: Todo[];
   allow: string[]; // "run_command:npm test", "edit:*" … approved for the rest of the session
   pinned?: boolean;
+  think?: boolean; // false: ask the model not to think first (faster); unset: the model's default
 }
 
 export interface SessionStub {

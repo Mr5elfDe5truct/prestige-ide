@@ -159,7 +159,7 @@ function toOpenAI(m: ChatMessage) {
   if (!m.images?.length) return { role: m.role, content: m.content };
   return {
     role: m.role,
-    content: [{ type: "text", text: m.content }, ...m.images.map((b64) => ({ type: "image_url", image_url: { url: `data:image/png;base64,${b64}` } }))],
+    content: [{ type: "text", text: m.content }, ...m.images.map((b64) => ({ type: "image_url", image_url: { url: `data:image/jpeg;base64,${b64}` } }))],
   };
 }
 

@@ -63,7 +63,7 @@ function fmtStats(s?: StreamStats, model?: string): string {
   return parts.filter(Boolean).join(" · ");
 }
 
-export function userBubble(m: StoredMessage): HTMLElement {
+export function userBubble(m: StoredMessage, onRewind?: () => void): HTMLElement {
   const row = h("div", m.summary ? "turn summary" : "turn user");
   if (m.summary) {
     const d = h("details", "summary-box");
@@ -81,6 +81,21 @@ export function userBubble(m: StoredMessage): HTMLElement {
     const chips = h("div", "chips");
     for (const f of files) chips.append(h("span", "chip", "@" + f.slice(12, -1)));
     b.append(chips);
+  }
+  if (m.images?.length) {
+    const pics = h("div", "pics");
+    for (const img of m.images) {
+      const el = h("img", "pic") as HTMLImageElement;
+      el.src = `data:image/jpeg;base64,${img}`;
+      pics.append(el);
+    }
+    b.prepend(pics);
+  }
+  if (onRewind && !m.archived) {
+    const rw = h("button", "rewind-btn", "↺ Rewind");
+    rw.title = "Rewind to here: undo the agent's file changes since this message and edit it";
+    rw.onclick = onRewind;
+    row.append(rw);
   }
   row.append(b);
   return row;
@@ -303,7 +318,15 @@ export function toolCard(call: ToolCall, m: StoredMessage, hooks: ToolCardHooks)
       const q = h("div", "approve-q", call.name === "run_command" ? "Run this command?" : kind === "edit" ? `Make this change to ${target}?` : `Allow ${verb}?`);
       const btns = h("div", "approve-btns");
       const yes = h("button", "btn primary", "Yes");
-      const always = h("button", "btn", call.name === "run_command" ? `Yes, and don't ask again for \`${String(call.arguments?.command ?? "").trim().split(/\s+/).slice(0, 2).join(" ")}\`` : "Yes, allow all edits this session");
+      const always = h(
+        "button",
+        "btn",
+        call.name === "run_command"
+          ? `Yes, and don't ask again for \`${String(call.arguments?.command ?? "").trim().split(/\s+/).slice(0, 2).join(" ")}\``
+          : kind === "edit"
+            ? "Yes, allow all edits this session"
+            : `Yes, and don't ask again for ${verb}`,
+      );
       const no = h("button", "btn", "No");
       const fb = h("input", "approve-fb") as HTMLInputElement;
       fb.placeholder = "Or tell it what to do instead, then press Enter";

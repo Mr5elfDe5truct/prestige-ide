@@ -33,6 +33,7 @@ import { FilesPane } from "./ui/files";
 import { ChangesPane, sessionChanges } from "./ui/changes";
 import { TerminalPane } from "./ui/terminal";
 import { openSettings } from "./ui/settings";
+import { applyRewind, checkpoints, planRewind } from "./rewind";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const transcript = $("transcript");
@@ -190,7 +191,7 @@ let pendingModel = "";
 // ---------- modes
 
 function drawMode() {
-  const mode = session?.mode ?? settings.defaultMode;
+  const mode = session?.mode ?? nextMode ?? settings.defaultMode;
   const m = MODES.find((x) => x.id === mode)!;
   const b = $("mode-btn");
   b.textContent = m.label;
@@ -198,18 +199,20 @@ function drawMode() {
   b.title = `${m.hint} (Shift+Tab to switch)`;
 }
 
+let nextMode: PermissionMode | null = null;
+
 function setMode(mode: PermissionMode) {
   if (session) {
     session.mode = mode;
     void saveSession(session);
-  } else settings.defaultMode = mode;
+  } else nextMode = mode; // for the session the next message starts, not the default
   drawMode();
 }
 
 $("mode-btn").onclick = () =>
   showMenu(
     $("mode-btn"),
-    MODES.map((m) => ({ label: m.label, sub: m.hint, on: (session?.mode ?? settings.defaultMode) === m.id, action: () => setMode(m.id) })),
+    MODES.map((m) => ({ label: m.label, sub: m.hint, on: (session?.mode ?? nextMode ?? settings.defaultMode) === m.id, action: () => setMode(m.id) })),
   );
 
 // ---------- sessions
@@ -301,6 +304,7 @@ function newSession() {
     return;
   }
   session = null;
+  nextMode = null;
   queue = [];
   drawAll();
   input.focus();
@@ -315,10 +319,11 @@ function ensureSession(): Session {
     created: Date.now(),
     updated: Date.now(),
     modelKey: pendingModel || currentModel()?.key || "",
-    mode: settings.defaultMode,
+    mode: nextMode ?? settings.defaultMode,
     messages: [],
     todos: [],
     allow: [],
+    think: settings.think,
   };
   changes.setSession(session);
   return session;
@@ -388,6 +393,7 @@ function openPath(p: string, line?: number) {
 function drawAll() {
   drawHeader();
   drawMode();
+  drawThink();
   drawModelChip();
   drawTranscript();
   drawTodos(session?.todos ?? []);
@@ -408,8 +414,8 @@ function drawTranscript() {
   $("welcome").hidden = msgs.length > 0;
   if (!msgs.length) drawWelcome();
   const calls = new Map<string, any>();
-  for (const m of msgs) {
-    if (m.role === "user") transcript.append(userBubble(m));
+  msgs.forEach((m, i) => {
+    if (m.role === "user") transcript.append(userBubble(m, () => void rewindTo(i)));
     else if (m.role === "assistant") {
       if (m.content || m.thinking) transcript.append(assistantBlock(m, openPath, scroll).el);
       for (const c of m.tool_calls ?? []) calls.set(c.id, c);
@@ -417,7 +423,7 @@ function drawTranscript() {
       const call = calls.get(m.tool_call_id ?? "") ?? { id: m.tool_call_id, name: m.tool_name, arguments: {} };
       transcript.append(toolCard(call, m, { root: session!.project, onOpen: (p) => openPath(p), onScroll: scroll }).el);
     }
-  }
+  });
   stick = true;
   requestAnimationFrame(scroll);
 }
@@ -512,6 +518,7 @@ const SLASH: { cmd: string; hint: string }[] = [
   { cmd: "/compact", hint: "summarise the conversation to free context (add a focus)" },
   { cmd: "/clear", hint: "start a new session in this project" },
   { cmd: "/plan", hint: "switch to Plan mode" },
+  { cmd: "/rewind", hint: "go back to an earlier message and undo the file changes since" },
   { cmd: "/model", hint: "pick a model" },
   { cmd: "/review", hint: "review the uncommitted changes for bugs" },
   { cmd: "/commit", hint: "write a commit message and commit the changes" },
@@ -631,7 +638,7 @@ input.addEventListener("keydown", (e) => {
     stop();
   } else if (e.key === "Tab" && e.shiftKey) {
     e.preventDefault();
-    const i = MODES.findIndex((m) => m.id === (session?.mode ?? settings.defaultMode));
+    const i = MODES.findIndex((m) => m.id === (session?.mode ?? nextMode ?? settings.defaultMode));
     setMode(MODES[(i + 1) % MODES.length].id);
   } else if (e.key === "ArrowUp" && !input.value) {
     const last = [...(session?.messages ?? [])].reverse().find((m) => m.role === "user" && !m.summary);
@@ -705,6 +712,24 @@ async function send() {
         if (!arg) return;
         text = arg;
         break;
+      case "/rewind": {
+        const s = session;
+        if (!s) return;
+        const cps = checkpoints(s);
+        if (!cps.length) {
+          status("Nothing to rewind to yet");
+          return;
+        }
+        showMenu($("mode-btn"), [
+          "Rewind to before…",
+          ...cps.slice(0, 15).map(({ index, msg }) => ({
+            label: msg.content.replace(/\n\n<attached-files>[\s\S]*$/, "").replace(/\s+/g, " ").slice(0, 70),
+            sub: `${planRewind(s, index).files.length} file(s) restored · ${new Date(msg.at ?? 0).toLocaleTimeString()}`,
+            action: () => void rewindTo(index),
+          })),
+        ]);
+        return;
+      }
       case "/model":
         $("model-btn").click();
         return;
@@ -755,14 +780,23 @@ async function send() {
     await refreshModels();
     return;
   }
+  if (attachments.length && !model.vision) {
+    status(`${model.name} can't see images. Pick a vision model (most llama.cpp models here can), or remove the pictures.`);
+    input.value = text;
+    autosize();
+    return;
+  }
   const s = ensureSession();
   if (!s.modelKey) s.modelKey = model.key;
   const firstPrompt = !s.messages.length;
   const content = await withMentions(text);
   const userMsg: StoredMessage = { role: "user", content, at: Date.now() };
+  if (attachments.length) userMsg.images = attachments.splice(0);
+  drawAttachments();
   s.messages.push(userMsg);
+  const at = s.messages.length - 1;
   $("welcome").hidden = true;
-  transcript.append(userBubble(userMsg));
+  transcript.append(userBubble(userMsg, () => void rewindTo(at)));
   stick = true;
   scroll();
   $("plan-bar").hidden = true;
@@ -909,6 +943,151 @@ Project instructions are read from \`PRESTIGE.md\`, \`CLAUDE.md\` or \`AGENTS.md
   $("welcome").hidden = true;
   scroll();
 }
+
+// ---------- checkpoints
+
+async function rewindTo(index: number) {
+  const s = session;
+  if (!s) return;
+  if (running) {
+    status("Stop the current task first (Esc)");
+    return;
+  }
+  const plan = planRewind(s, index);
+  const names = plan.files.map((f) => "  • " + relPath(s.project, f.path) + (f.before === null ? " (deleted: it was created after this)" : "")).join("\n");
+  const msg =
+    `Rewind to before this message?\n\n` +
+    (plan.files.length ? `These files go back to how they were then:\n${names}\n\n` : "No files were changed after it.\n\n") +
+    `The conversation after it is removed and the message goes back in the box to edit.` +
+    (plan.commands ? `\n\n${plan.commands} command(s) ran since then. Their effects (installs, git, builds) are NOT undone.` : "") +
+    (plan.files.length ? `\n\nEdits you made yourself to those files since then are lost.` : "");
+  if (!confirm(msg)) return;
+  const r = await applyRewind(s, plan);
+  await saveSession(s);
+  for (const f of plan.files) void files.fileChanged(f.path);
+  fileCache = null;
+  drawAll();
+  void files.refresh();
+  input.value = r.text;
+  attachments.splice(0, attachments.length, ...(r.images ?? []));
+  drawAttachments();
+  autosize();
+  input.focus();
+  status(r.failed.length ? `Rewound, but couldn't restore: ${r.failed.join("; ")}` : `Rewound${plan.files.length ? ` · ${plan.files.length} file(s) restored` : ""}`);
+}
+
+// ---------- pictures
+
+const attachments: string[] = []; // base64 JPEGs, no data: prefix
+
+/** Any image to a JPEG no larger than 1568 px a side (what vision models read well), as base64. */
+function toJpeg(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      const k = Math.min(1, 1568 / Math.max(img.width, img.height));
+      const c = document.createElement("canvas");
+      c.width = Math.round(img.width * k);
+      c.height = Math.round(img.height * k);
+      const g = c.getContext("2d")!;
+      g.fillStyle = "#fff";
+      g.fillRect(0, 0, c.width, c.height);
+      g.drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL("image/jpeg", 0.88).split(",")[1]);
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("not an image"));
+    };
+    img.src = url;
+  });
+}
+
+async function addImages(list: Iterable<File | Blob>) {
+  for (const f of list) {
+    if (!f.type.startsWith("image/")) continue;
+    try {
+      attachments.push(await toJpeg(f));
+    } catch {
+      status("Couldn't read that picture");
+    }
+  }
+  drawAttachments();
+}
+
+function drawAttachments() {
+  const el = $("attachments");
+  el.innerHTML = "";
+  el.hidden = !attachments.length;
+  attachments.forEach((b64, i) => {
+    const a = h("div", "attachment");
+    const img = h("img") as HTMLImageElement;
+    img.src = `data:image/jpeg;base64,${b64}`;
+    const x = h("button", "tab-x", "×");
+    x.title = "Remove";
+    x.onclick = () => {
+      attachments.splice(i, 1);
+      drawAttachments();
+    };
+    a.append(img, x);
+    el.append(a);
+  });
+}
+
+input.addEventListener("paste", (e) => {
+  const imgs = [...(e.clipboardData?.files ?? [])].filter((f) => f.type.startsWith("image/"));
+  if (imgs.length) {
+    e.preventDefault();
+    void addImages(imgs);
+  }
+});
+const composerEl = document.querySelector<HTMLElement>(".composer")!;
+composerEl.addEventListener("dragover", (e) => {
+  if ([...(e.dataTransfer?.items ?? [])].some((i) => i.type.startsWith("image/"))) {
+    e.preventDefault();
+    composerEl.classList.add("drop");
+  }
+});
+composerEl.addEventListener("dragleave", () => composerEl.classList.remove("drop"));
+composerEl.addEventListener("drop", (e) => {
+  composerEl.classList.remove("drop");
+  if (e.dataTransfer?.files.length) {
+    e.preventDefault();
+    void addImages(e.dataTransfer.files);
+  }
+});
+$("attach-btn").onclick = () => {
+  const f = h("input") as HTMLInputElement;
+  f.type = "file";
+  f.accept = "image/*";
+  f.multiple = true;
+  f.onchange = () => f.files && void addImages(f.files);
+  f.click();
+};
+
+// ---------- thinking
+
+function drawThink() {
+  const on = (session?.think ?? settings.think) !== false;
+  const b = $("think-btn");
+  b.textContent = on ? "✻ Thinking" : "✻ No thinking";
+  b.classList.toggle("think-off", !on);
+  b.title = on
+    ? "The model thinks before answering (better on hard problems). Click for quicker answers."
+    : "Answers straight away (faster). Click to let it think first.";
+}
+$("think-btn").onclick = () => {
+  const on = (session?.think ?? settings.think) !== false;
+  settings.think = !on;
+  void saveSettings();
+  if (session) {
+    session.think = !on;
+    void saveSession(session);
+  }
+  drawThink();
+};
 
 // ---------- the side panel
 

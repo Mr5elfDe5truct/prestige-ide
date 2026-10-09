@@ -2,6 +2,7 @@
 import { settings, TIERS, type PermissionMode, type Tier } from "../store";
 import type { ModelInfo } from "../backends";
 import { h } from "./transcript";
+import { discover } from "../mcp";
 
 export function openSettings(dlg: HTMLDialogElement, models: ModelInfo[], onSave: () => Promise<void>) {
   dlg.innerHTML = "";
@@ -47,6 +48,36 @@ export function openSettings(dlg: HTMLDialogElement, models: ModelInfo[], onSave
   const web = check(settings.webTools);
   form.append(labelled("Web search and fetch", "through the Workstation's tool server (:8200); only searches leave the PC", web));
 
+  form.append(h("h3", "", "MCP tools"));
+  form.append(
+    h("p", "hint", "MCP servers on an mcpo endpoint (the Workstation's is :8200; add servers with its tool store or mcpo-config.json). Each server you tick gives the agent its tools. Read-only ones run freely; the rest ask first. Fewer tools means faster, more accurate local models."),
+  );
+  const mcpUrl = h("input") as HTMLInputElement;
+  mcpUrl.value = settings.mcpUrl;
+  form.append(labelled("Endpoint", "", mcpUrl));
+  const mcpList = h("div", "mcp-list", "Looking for servers…");
+  form.append(mcpList);
+  const mcpChecks = new Map<string, HTMLInputElement>();
+  const loadMcp = async () => {
+    const prev = settings.mcpUrl;
+    settings.mcpUrl = mcpUrl.value.trim() || prev;
+    const { servers, tools } = await discover(true);
+    settings.mcpUrl = prev;
+    mcpList.innerHTML = "";
+    mcpChecks.clear();
+    if (!servers.length) mcpList.textContent = "No servers found at this endpoint.";
+    for (const sv of servers) {
+      const box = check(settings.mcpEnabled.includes(sv.id));
+      box.disabled = !!sv.error;
+      if (!sv.error) mcpChecks.set(sv.id, box);
+      const ro = tools.filter((t) => t.server === sv.id && t.readOnly).length;
+      const hint = sv.error ? `not reachable: ${sv.error}` : `${sv.tools} tools · ${ro} read-only`;
+      mcpList.append(labelled(sv.id, hint, box));
+    }
+  };
+  mcpUrl.onchange = () => void loadMcp();
+  void loadMcp();
+
   form.append(h("h3", "", "Models"));
   const ctx = num(settings.ollamaCtx, 2048, 262144);
   form.append(labelled("Ollama context (tokens)", "llama.cpp models use the context the router gives them", ctx));
@@ -71,6 +102,9 @@ export function openSettings(dlg: HTMLDialogElement, models: ModelInfo[], onSave
     settings.webTools = web.checked;
     settings.ollamaCtx = Number(ctx.value) || 32768;
     settings.swapBackends = swap.checked;
+    settings.mcpUrl = mcpUrl.value.trim() || settings.mcpUrl;
+    if (mcpChecks.size) settings.mcpEnabled = [...mcpChecks].filter(([, b]) => b.checked).map(([id]) => id);
+    await discover(true);
     await onSave();
     dlg.close();
   };
