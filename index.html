@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Prestige IDE</title>
+  </head>
+  <body>
+    <div id="app">
+      <aside id="sidebar">
+        <div class="brand">
+          <span class="brand-mark">◆</span>
+          <span class="brand-name">Prestige <b>IDE</b></span>
+        </div>
+        <button id="new-session" class="btn primary wide" title="New session (Ctrl+N)">＋ New session</button>
+        <button id="project-btn" class="project-btn" title="Change project folder">
+          <span class="project-label">Project</span>
+          <span id="project-name" class="project-name">Open a folder…</span>
+        </button>
+        <input id="session-search" class="search" placeholder="Search sessions" />
+        <div id="session-list" class="session-list"></div>
+        <div class="sidebar-foot">
+          <div id="backend-status" class="backend-status"></div>
+          <button id="settings-btn" class="icon-btn" title="Settings">⚙</button>
+        </div>
+      </aside>
+
+      <main id="chat">
+        <header class="chat-head">
+          <button id="toggle-sidebar" class="icon-btn" title="Toggle sidebar (Ctrl+B)">☰</button>
+          <div class="chat-title-wrap">
+            <div id="chat-title" class="chat-title">New session</div>
+            <div id="chat-sub" class="chat-sub"></div>
+          </div>
+          <div class="head-actions">
+            <button class="icon-btn pane-btn" data-pane="files" title="Files (Ctrl+E)">Files</button>
+            <button class="icon-btn pane-btn" data-pane="changes" title="Changes (Ctrl+D)">Changes <span id="changes-count" class="count"></span></button>
+            <button class="icon-btn pane-btn" data-pane="terminal" title="Terminal (Ctrl+`)">Terminal</button>
+          </div>
+        </header>
+        <div id="transcript" class="transcript"></div>
+        <div id="welcome" class="welcome"></div>
+        <div class="composer-wrap">
+          <div id="todos" class="todos" hidden></div>
+          <div id="plan-bar" class="plan-bar" hidden>
+            <span>Plan ready.</span>
+            <button id="plan-approve" class="btn primary small">Approve and start (accept edits)</button>
+            <button id="plan-approve-ask" class="btn small">Approve, ask before edits</button>
+            <button id="plan-keep" class="btn small">Keep planning</button>
+          </div>
+          <div id="queue" class="queue" hidden></div>
+          <div class="composer">
+            <div id="popup" class="popup" hidden></div>
+            <textarea id="input" rows="1" placeholder="Ask Prestige to build, fix or explain…  (@ to mention a file, / for commands)"></textarea>
+            <div class="composer-bar">
+              <button id="mode-btn" class="chip-btn" title="Permission mode (Shift+Tab)"></button>
+              <button id="model-btn" class="chip-btn" title="Model"></button>
+              <span id="ctx-meter" class="ctx-meter"></span>
+              <span class="grow"></span>
+              <span id="status" class="status"></span>
+              <button id="send" class="send" title="Send (Enter)">↑</button>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      <div id="splitter" class="splitter"></div>
+      <section id="panel" class="panel" hidden>
+        <div class="panel-tabs">
+          <button class="panel-tab" data-pane="files">Files</button>
+          <button class="panel-tab" data-pane="changes">Changes</button>
+          <button class="panel-tab" data-pane="terminal">Terminal</button>
+          <span class="grow"></span>
+          <button id="panel-close" class="icon-btn" title="Close panel">×</button>
+        </div>
+        <div id="panel-body" class="panel-body"></div>
+      </section>
+    </div>
+
+    <dialog id="settings" class="dialog"></dialog>
+    <div id="menu" class="menu" hidden></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

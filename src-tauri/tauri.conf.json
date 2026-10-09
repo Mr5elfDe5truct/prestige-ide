@@ -1,0 +1,40 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Prestige IDE",
+  "version": "0.1.0",
+  "identifier": "com.rgstudios.prestige-ide",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://127.0.0.1:1430",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Prestige IDE",
+        "width": 1440,
+        "height": 920,
+        "minWidth": 900,
+        "minHeight": 600,
+        "backgroundColor": "#141110",
+        "center": true,
+        "dragDropEnabled": false
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; script-src 'self' 'unsafe-eval'; worker-src 'self' blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; img-src 'self' data: blob:; connect-src 'self' ipc: http://ipc.localhost http://127.0.0.1:* http://localhost:*"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "publisher": "R.G. Studios",
+    "copyright": "© 2026 Ryan B. Gyles",
+    "category": "DeveloperTool",
+    "shortDescription": "Local agentic coding IDE by R.G. Studios",
+    "longDescription": "Prestige IDE by R.G. Studios: an agentic coding IDE that runs entirely on your PC's own models.",
+    "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.ico"]
+  }
+}
