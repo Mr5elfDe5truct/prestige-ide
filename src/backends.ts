@@ -147,6 +147,22 @@ async function freeOther(backend: Backend) {
   }
 }
 
+/** The router runs one llama.cpp model at a time (--models-max 1), and an idle model that has gone to sleep still holds
+ *  that slot: a request for another model would wait for it forever. Unload any other llama.cpp model first. */
+async function makeRoomFor(id: string) {
+  try {
+    const list = (await getJson(`${LLAMA}/models`)).data ?? [];
+    const others = list.filter((m: any) => m.id !== id && m.status?.value && m.status.value !== "unloaded");
+    await Promise.all(
+      others.map((m: any) =>
+        http(`${LLAMA.replace(/\/v1$/, "")}/models/unload`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ model: m.id }) }),
+      ),
+    );
+  } catch {
+    // The router may be down; the request itself will say so.
+  }
+}
+
 function toOpenAI(m: ChatMessage) {
   if (m.role === "tool") return { role: "tool", tool_call_id: m.tool_call_id, content: m.content };
   if (m.tool_calls?.length) {
@@ -263,6 +279,7 @@ export async function streamChat(
       }
     });
   } else {
+    await makeRoomFor(model.id);
     const r = await http(`${LLAMA}/chat/completions`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
