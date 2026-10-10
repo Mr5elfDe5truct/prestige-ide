@@ -6,7 +6,17 @@ import json, os, statistics, sys
 from collections import defaultdict
 
 sys.stdout.reconfigure(encoding="utf-8")
+# --untested CONFIG="why": leave a configuration out of the scores (e.g. it never loaded) and say so instead.
+untested = {}
+args = sys.argv[2:]
+while args:
+    a = args.pop(0)
+    if a == "--untested":
+        k, _, why = args.pop(0).partition("=")
+        untested[k] = why
 rows = [json.loads(l) for l in open(os.path.join(sys.argv[1], "results.jsonl"), encoding="utf-8") if l.strip()]
+untested_labels = {r["config"]: r["label"] for r in rows if r["config"] in untested}
+rows = [r for r in rows if r["config"] not in untested]
 by_cfg = defaultdict(list)
 for r in rows:
     by_cfg[r["config"]].append(r)
@@ -30,6 +40,9 @@ for c in order:
     secs = [r.get("seconds", 0) for r in rs]
     print(f"| {rs[0]['label']} | **{sum(r['pass'] for r in rs)}/{len(rs)}** | {fmt_s(statistics.median(secs))} | {fmt_s(sum(secs))} | "
           f"{statistics.median([r.get('turns', 0) for r in rs]):.0f} | {sum(r.get('toolErrors', 0) for r in rs)} | {sum(1 for r in rs if r.get('timedOut'))} |")
+
+for k, why in untested.items():
+    print(f"| {untested_labels.get(k, k)} | not tested: {why} | | | | | |")
 
 print("\n## By kind of task\n")
 print("| Model | " + " | ".join(kinds) + " |")

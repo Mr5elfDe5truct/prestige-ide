@@ -18,12 +18,20 @@ def project_dir(task, dest):
     return dest
 
 
+def _rmtree(path):
+    """Deletes a folder, including git's read-only object files (Windows won't delete those otherwise)."""
+    def unlock(func, p, _exc):
+        os.chmod(p, 0o700)
+        func(p)
+    shutil.rmtree(path, onexc=unlock)
+
+
 def prepare(task_id, dest):
     task = TASKS[task_id]
     if task["project"].startswith("repo:"):
         return project_dir(task, dest)
     if os.path.exists(dest):
-        shutil.rmtree(dest)
+        _rmtree(dest)
     shutil.copytree(os.path.join(HERE, "fixture"), dest)
     for s in task.get("seed", []):
         p = os.path.join(dest, s["file"])

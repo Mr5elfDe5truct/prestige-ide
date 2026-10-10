@@ -4,6 +4,7 @@
 // Results go to RESULTS_DIR/results.jsonl, one line per run; finished runs are skipped, so it can be restarted.
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -67,7 +68,8 @@ for (const c of configs) {
   for (const t of tasks) {
     const key = `${c}|${t.id}`;
     if (done.has(key)) continue;
-    const dir = path.join(out, "work", c, t.id);
+    // A folder of its own outside the results, so a model can't look at a neighbouring task's files.
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "pide-bench-"));
     const project = py("prepare", t.id, dir).split("\n").pop();
     const p = await page();
     const started = new Date().toISOString();
