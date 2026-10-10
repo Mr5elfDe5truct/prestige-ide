@@ -11,7 +11,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "test": "node --test src/*.test.ts"
+    "test": "node --import tsx --import ./test/fake-tauri.ts --test src/*.test.ts test/*.test.ts",
+    "check": "tsc && npm test && cd src-tauri && cargo test"
   },
   "dependencies": {
     "@fontsource/ibm-plex-sans": "^5.3.0",
@@ -31,6 +32,7 @@
   "devDependencies": {
     "@tauri-apps/cli": "^2.12.1",
     "@types/diff": "^7.0.2",
+    "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vite": "^6.4.4"
   }

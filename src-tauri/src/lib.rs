@@ -10,12 +10,19 @@ use tauri::{AppHandle, Manager};
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
 
+/// A name inside the data folder: plain relative ASCII names only, with no way out of the folder.
+fn valid_rel(rel: &str) -> bool {
+    !rel.is_empty()
+        && !rel.contains("..")
+        && !rel.starts_with('/')
+        && !rel.ends_with('/')
+        && !rel.contains("//")
+        && rel.chars().all(|c| c.is_ascii_alphanumeric() || "._-/".contains(c))
+}
+
 /// A path inside the app's data folder (%APPDATA%\com.rgstudios.prestige-ide). Only plain relative names are allowed.
 fn data_path(app: &AppHandle, rel: &str) -> Result<PathBuf, String> {
-    if rel.is_empty() || rel.contains("..") || rel.contains(':') || rel.starts_with('/') || rel.starts_with('\\') {
-        return Err(format!("bad data path: {rel}"));
-    }
-    if !rel.chars().all(|c| c.is_ascii_alphanumeric() || "._-/".contains(c)) {
+    if !valid_rel(rel) {
         return Err(format!("bad data path: {rel}"));
     }
     let base = app.path().app_data_dir().map_err(|e| e.to_string())?;
@@ -119,4 +126,22 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Prestige IDE");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::valid_rel;
+
+    #[test]
+    fn data_names_stay_inside_the_folder() {
+        for ok in ["settings.json", "sessions/index.json", "sessions/abc-123_x.json"] {
+            assert!(valid_rel(ok), "{ok}");
+        }
+        for bad in [
+            "", "..", "../x.json", "a/../../x", "/etc/passwd", r"\server\x", "C:/Windows/x", "C:x", r"a\b.json",
+            "sessions/", "a//b", "séance.json", "a b.json", "a\0b",
+        ] {
+            assert!(!valid_rel(bad), "{bad:?}");
+        }
+    }
 }

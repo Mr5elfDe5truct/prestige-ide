@@ -167,3 +167,81 @@ pub fn fs_grep(
     }
     Ok(out)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A fresh folder under the system temp folder for one test.
+    fn temp(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("pide-fsops-{name}-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&d);
+        fs::create_dir_all(&d).unwrap();
+        d
+    }
+    fn s(p: &Path) -> String {
+        p.to_string_lossy().into_owned()
+    }
+
+    #[test]
+    fn write_creates_folders_and_read_gets_it_back() {
+        let d = temp("rw");
+        let f = d.join("a/b/c.txt");
+        fs_write(s(&f), "héllo\r\nworld".into()).unwrap();
+        assert_eq!(fs_read(s(&f)).unwrap(), "héllo\r\nworld");
+        assert!(fs_exists(s(&f)));
+        fs_delete(s(&f)).unwrap();
+        assert!(!fs_exists(s(&f)));
+    }
+
+    #[test]
+    fn read_refuses_binaries_and_folders() {
+        let d = temp("bin");
+        fs::write(d.join("x.bin"), [0u8, 1, 2, 0, 5]).unwrap();
+        assert!(fs_read(s(&d.join("x.bin"))).unwrap_err().contains("binary"));
+        assert!(fs_read(s(&d)).unwrap_err().contains("directory"));
+        assert!(fs_delete(s(&d)).is_err(), "folders aren't deleted");
+    }
+
+    #[test]
+    fn list_puts_folders_first_and_hides_git() {
+        let d = temp("list");
+        fs::create_dir_all(d.join(".git")).unwrap();
+        fs::create_dir_all(d.join("src")).unwrap();
+        fs::write(d.join("b.txt"), "").unwrap();
+        fs::write(d.join("A.txt"), "").unwrap();
+        let names: Vec<String> = fs_list(s(&d)).unwrap().into_iter().map(|e| e.name).collect();
+        assert_eq!(names, ["src", "A.txt", "b.txt"]);
+    }
+
+    #[test]
+    fn glob_matches_bare_names_at_any_depth_and_paths_exactly() {
+        let d = temp("glob");
+        for f in ["a.rs", "src/b.rs", "src/deep/c.rs", "src/d.ts", "node_modules/x/e.rs"] {
+            let p = d.join(f);
+            fs::create_dir_all(p.parent().unwrap()).unwrap();
+            fs::write(p, "").unwrap();
+        }
+        let names = |pat: &str| {
+            let mut v: Vec<String> = fs_glob(s(&d), pat.into(), None).unwrap().into_iter().map(|p| p.rsplit('/').next().unwrap().to_string()).collect();
+            v.sort();
+            v
+        };
+        assert_eq!(names("*.rs"), ["a.rs", "b.rs", "c.rs"], "node_modules is skipped");
+        assert_eq!(names("src/*.rs"), ["b.rs"], "one * doesn't cross folders");
+        assert_eq!(names("src/**/*.rs"), ["b.rs", "c.rs"]);
+    }
+
+    #[test]
+    fn grep_with_glob_case_and_limit() {
+        let d = temp("grep");
+        fs::write(d.join("a.py"), "def foo():\n    return FOO\n").unwrap();
+        fs::write(d.join("b.ts"), "const foo = 1;\n").unwrap();
+        let hits = fs_grep(s(&d), "foo".into(), Some("*.py".into()), None, None).unwrap();
+        assert_eq!(hits.iter().map(|h| h.line).collect::<Vec<_>>(), [1]);
+        let any_case = fs_grep(s(&d), "foo".into(), Some("*.py".into()), Some(true), None).unwrap();
+        assert_eq!(any_case.len(), 2);
+        assert_eq!(fs_grep(s(&d), "foo".into(), None, Some(true), Some(1)).unwrap().len(), 1);
+        assert!(fs_grep(s(&d), "(".into(), None, None, None).is_err(), "a bad regex is an error, not a panic");
+    }
+}

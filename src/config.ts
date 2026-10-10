@@ -6,7 +6,7 @@
 // user has trusted that exact content. Deny rules always apply: they can only make things safer.
 import { invoke } from "@tauri-apps/api/core";
 import { homeDir } from "@tauri-apps/api/path";
-import { relPath, resolvePath } from "./tools";
+import { isCompound, relPath, resolvePath } from "./tools";
 import { saveSettings, settings } from "./store";
 
 export type HookEvent = "PreToolUse" | "PostToolUse" | "UserPromptSubmit" | "Stop";
@@ -122,10 +122,16 @@ function ruleMatches(rule: string, name: string, args: any, root: string): boole
 
 /** What the settings files say about a call: deny wins over allow; undefined means no rule applies. */
 export function decide(name: string, args: any, root: string): { decision: "allow" | "deny"; rule: string } | undefined {
-  const deny = current.deny.find((r) => ruleMatches(r, name, args, root));
+  // A deny rule checks the whole command and each command chained inside it, so "npm test; git push" still hits
+  // run_command(git push*). It's a guardrail against the obvious, not a sandbox: scripts and aliases can still hide things.
+  const variants =
+    name === "run_command"
+      ? [args, ...String(args?.command ?? "").split(/[;&|\r\n]+|\$\(|`/).map((c) => ({ ...args, command: c.replace(/^[\s({]+|[\s)}]+$/g, "") })).filter((a) => a.command)]
+      : [args];
+  const deny = current.deny.find((r) => variants.some((a) => ruleMatches(r, name, a, root)));
   if (deny) return { decision: "deny", rule: deny };
   // An allowed command prefix mustn't let a chained "; something else" ride along.
-  if (name === "run_command" && /[;&|`]|\$\(/.test(String(args?.command ?? ""))) return undefined;
+  if (name === "run_command" && isCompound(String(args?.command ?? ""))) return undefined;
   const allow = current.allow.find((r) => ruleMatches(r, name, args, root));
   return allow ? { decision: "allow", rule: allow } : undefined;
 }

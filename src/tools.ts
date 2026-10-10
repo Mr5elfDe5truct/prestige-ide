@@ -156,11 +156,21 @@ export function needsApproval(name: string, args: any, mode: PermissionMode, all
   if (kind === "edit" && (mode === "acceptEdits" || allow.includes("edit:*"))) return false;
   if (name === "run_command") {
     const cmd = String(args?.command ?? "").trim();
-    // Chained commands always ask: an approved prefix shouldn't let "; rm" ride along.
-    if (/[;&|`]|\$\(/.test(cmd)) return true;
-    return !allow.some((r) => r.startsWith("run_command:") && cmd.startsWith(r.slice("run_command:".length)));
+    if (isCompound(cmd)) return true;
+    return !allow.some((r) => r.startsWith("run_command:") && startsWithWords(cmd, r.slice("run_command:".length)));
   }
   return !allow.includes(`${name}:*`);
+}
+
+/** A command that runs more than one thing, or writes somewhere through redirection, so an approved prefix mustn't
+ *  cover it: ; & | ` $( and newlines separate PowerShell commands, < and > redirect. */
+export function isCompound(cmd: string): boolean {
+  return /[;&|`<>\r\n]|\$\(/.test(cmd);
+}
+
+/** "npm test --watch" starts with "npm test"; "npm testx" doesn't. */
+export function startsWithWords(cmd: string, prefix: string): boolean {
+  return cmd === prefix || cmd.startsWith(prefix + " ") || cmd.startsWith(prefix + "\t");
 }
 
 // ---- paths

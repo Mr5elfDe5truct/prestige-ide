@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install
+        run: npm ci
+
+      - name: Type-check
+        run: npx tsc
+
+      - name: TypeScript tests
+        run: npm test
+
+      - name: Build the frontend (the Rust side embeds dist/)
+        run: npx vite build
+
+      - name: Rust tests
+        working-directory: src-tauri
+        run: cargo test
+
+      - name: Benchmark tests are still valid
+        run: |
+          cd bench/fixture; npm ci; cd ../..
+          python bench/bench.py validate
