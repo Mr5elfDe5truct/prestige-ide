@@ -8,6 +8,7 @@ import type { StreamStats, ToolCall } from "../backends";
 import type { Approval, AssistantView, ToolView } from "../agent";
 import type { StoredMessage } from "../store";
 import { approvalText, describeCall, kindOf, relPath, resolvePath } from "../tools";
+import { editNotebook } from "../notebook";
 import { invoke } from "@tauri-apps/api/core";
 import { langFor } from "./lang";
 
@@ -228,7 +229,7 @@ export function toolCard(call: ToolCall, m: StoredMessage, hooks: ToolCardHooks)
   const body = h("div", "tool-body");
   card.append(head, body);
   head.onclick = () => card.classList.toggle("open");
-  if (call.name === "edit_file" || call.name === "write_file" || call.name === "read_file") {
+  if (call.name === "edit_file" || call.name === "write_file" || call.name === "read_file" || call.name === "notebook_edit") {
     targetEl.classList.add("path-link");
     targetEl.onclick = (e) => {
       e.stopPropagation();
@@ -251,7 +252,7 @@ export function toolCard(call: ToolCall, m: StoredMessage, hooks: ToolCardHooks)
         card.classList.add("open");
         live = h("pre", "tool-out sub-steps");
         body.append(live);
-      } else if (call.name === "edit_file" || call.name === "write_file") {
+      } else if (call.name === "edit_file" || call.name === "write_file" || call.name === "notebook_edit") {
         // Show what's about to change while it waits for approval.
         const a = call.arguments ?? {};
         card.classList.add("open");
@@ -265,7 +266,14 @@ export function toolCard(call: ToolCall, m: StoredMessage, hooks: ToolCardHooks)
             // new file
           }
           let after = call.name === "write_file" ? String(a.content ?? "") : null;
-          if (after === null && before !== null) {
+          if (call.name === "notebook_edit" && before !== null) {
+            try {
+              after = editNotebook(before, { cell: Number(a.cell), mode: a.mode, source: a.source, cell_type: a.cell_type });
+            } catch {
+              after = null; // the tool will report the problem when it runs
+            }
+          }
+          if (after === null && before !== null && call.name === "edit_file") {
             const o = String(a.old_string ?? "");
             const fix = (x: string) => (before!.includes(o) || !before!.includes("\r\n") ? x : x.replace(/\r?\n/g, "\r\n"));
             const oo = fix(o);

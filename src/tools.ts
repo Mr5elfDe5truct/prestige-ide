@@ -4,6 +4,7 @@ import { listen } from "@tauri-apps/api/event";
 import { errMsg, http } from "./backends";
 import { settings, type PermissionMode, type ToolMeta, type Todo } from "./store";
 import { callTool, enabledTools, findTool } from "./mcp";
+import { editNotebook, renderNotebook } from "./notebook";
 
 export const MCPO = "http://127.0.0.1:8200";
 
@@ -43,6 +44,22 @@ export const SPECS: ToolSpec[] = [
     parameters: obj(
       { path: str("File path"), old_string: str("Exact text to replace"), new_string: str("Replacement text"), replace_all: bool("Replace every occurrence") },
       ["path", "old_string", "new_string"],
+    ),
+  },
+  {
+    name: "notebook_edit",
+    kind: "edit",
+    description:
+      "Edit one cell of a Jupyter notebook (.ipynb). read_file shows the cells numbered from 0. mode replace (default) sets the cell's source (and cell_type if given) and clears a code cell's old outputs; insert adds a new cell before that number (use the cell count to add at the end); delete removes it. Don't edit .ipynb files with edit_file or write_file.",
+    parameters: obj(
+      {
+        path: str("Notebook path"),
+        cell: num("Cell number, from 0"),
+        source: str("The cell's new source (replace, insert)"),
+        cell_type: { type: "string", enum: ["code", "markdown"], description: "Cell type (insert; or to change a cell's type)" },
+        mode: { type: "string", enum: ["replace", "insert", "delete"], description: "Default: replace" },
+      },
+      ["path", "cell"],
     ),
   },
   {
@@ -318,6 +335,13 @@ export async function runTool(name: string, args: any, ctx: ToolContext): Promis
       case "read_file": {
         const path = resolvePath(ctx.root, args.path);
         const text = await invoke<string>("fs_read", { path });
+        if (/\.ipynb$/i.test(path)) {
+          try {
+            return done(renderNotebook(text), { path });
+          } catch {
+            // not valid notebook JSON: show it as text
+          }
+        }
         const lines = text.split(/\r?\n/);
         const start = Math.max(1, Number(args.offset) || 1);
         const limit = Math.max(1, Number(args.limit) || 2000);
@@ -356,6 +380,20 @@ export async function runTool(name: string, args: any, ctx: ToolContext): Promis
         const after = args.replace_all ? before.split(oldS).join(newS) : before.replace(oldS, () => newS);
         await invoke("fs_write", { path, content: after });
         return done(`Edited ${relPath(ctx.root, path)}${count > 1 ? ` (${count} places)` : ""}`, { path, before, after });
+      }
+      case "notebook_edit": {
+        const path = resolvePath(ctx.root, args.path);
+        const before = await readText(path);
+        if (before === null) return fail(`${args.path} does not exist.`);
+        let after: string;
+        try {
+          after = editNotebook(before, { cell: Number(args.cell), mode: args.mode, source: args.source, cell_type: args.cell_type });
+        } catch (e) {
+          return fail(e instanceof Error ? e.message : String(e));
+        }
+        await invoke("fs_write", { path, content: after });
+        const what = args.mode === "insert" ? "Inserted cell" : args.mode === "delete" ? "Deleted cell" : "Edited cell";
+        return done(`${what} ${args.cell} in ${relPath(ctx.root, path)}`, { path, before, after });
       }
       case "list_dir": {
         const path = resolvePath(ctx.root, args.path);
@@ -441,6 +479,8 @@ export function describeCall(root: string, name: string, args: any): { verb: str
       return { verb: "Read", target: p(args.path) + (args.offset ? ` (from line ${args.offset})` : "") };
     case "write_file":
       return { verb: "Write", target: p(args.path) };
+    case "notebook_edit":
+      return { verb: args.mode === "insert" ? "Insert cell" : args.mode === "delete" ? "Delete cell" : "Edit cell", target: `${p(args.path)} · ${args.cell}` };
     case "edit_file":
       return { verb: "Edit", target: p(args.path) };
     case "list_dir":
