@@ -49,7 +49,7 @@ export const settings: Settings = {
   mcpUrl: "http://127.0.0.1:8200",
   // filesystem, desktop and fetch duplicate the built-in tools, so they start off.
   mcpEnabled: ["workstation", "browser", "time"],
-  think: true,
+  think: false, // off by default: in the bake-off it scored as well and ran about 3x faster (bench/results-2026-10-09.md)
   subagentTier: "same",
   trustedConfigs: {},
 };
