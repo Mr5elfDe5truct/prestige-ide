@@ -1599,3 +1599,63 @@ body.no-sidebar #sidebar {
   min-width: 0;
   overflow: hidden;
 }
+
+.turn.shot {
+  margin-left: 24px;
+}
+.shot-cap {
+  font: 11.5px var(--mono);
+  color: var(--text-3);
+  margin-bottom: 4px;
+}
+.shot-img {
+  max-width: 360px;
+  max-height: 240px;
+  cursor: zoom-in;
+}
+.shot-img.big {
+  max-width: 100%;
+  max-height: none;
+  cursor: zoom-out;
+}
+
+.preview-pane {
+  display: flex;
+  flex-direction: column;
+}
+.preview-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--line);
+}
+.preview-url {
+  flex: 1;
+  min-width: 120px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  padding: 4px 9px;
+  font: 12.5px var(--mono);
+  outline: none;
+}
+.preview-url:focus {
+  border-color: var(--gold);
+}
+.preview-status {
+  font-size: 12px;
+  color: var(--text-3);
+}
+.preview-body {
+  flex: 1;
+  position: relative;
+  min-height: 0;
+}
+.preview-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #fff;
+}

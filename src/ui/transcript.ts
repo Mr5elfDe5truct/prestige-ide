@@ -70,6 +70,18 @@ export function userBubble(m: StoredMessage, onRewind?: () => void): HTMLElement
     row.textContent = m.content;
     return row;
   }
+  if (m.shot !== undefined) {
+    const row = h("div", "turn shot");
+    const cap = h("div", "shot-cap", `Screenshot · ${m.shot}`);
+    row.append(cap);
+    for (const img of m.images ?? []) {
+      const el = h("img", "pic shot-img") as HTMLImageElement;
+      el.src = `data:image/png;base64,${img}`;
+      el.onclick = () => el.classList.toggle("big");
+      row.append(el);
+    }
+    return row;
+  }
   const row = h("div", m.summary ? "turn summary" : "turn user");
   if (m.summary) {
     const d = h("details", "summary-box");

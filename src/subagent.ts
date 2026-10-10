@@ -33,7 +33,8 @@ export async function runSubagent(
   signal: AbortSignal,
   progress: (line: string) => void,
 ): Promise<SubagentResult> {
-  const tools = (await toolSchemas("plan")).filter((t) => t.function.name !== "task");
+  // No nested subagents, and no screenshots (a subagent's report is text).
+  const tools = (await toolSchemas("plan")).filter((t) => t.function.name !== "task" && t.function.name !== "preview_page");
   const msgs: ChatMessage[] = [
     { role: "system", content: system(root) },
     { role: "user", content: prompt },

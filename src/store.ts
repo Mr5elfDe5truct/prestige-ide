@@ -83,6 +83,7 @@ export interface ToolMeta {
   path?: string;
   before?: string | null; // file text before an edit (null: the file was new)
   after?: string;
+  image?: string; // a screenshot (base64 PNG) the tool took; moved into a message for the model, not kept here
 }
 
 export interface StoredMessage extends ChatMessage {
@@ -93,6 +94,7 @@ export interface StoredMessage extends ChatMessage {
   archived?: boolean | number; // compacted away: shown, but not sent to the model (the number is the summary's `at`)
   summary?: boolean; // the summary that replaced archived messages
   hook?: boolean; // added by a hook, not typed by the user
+  shot?: string; // a screenshot handed to the model after a tool (its URL), shown as a picture, not as your message
   at?: number;
 }
 

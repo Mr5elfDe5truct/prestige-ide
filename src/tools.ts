@@ -125,6 +125,13 @@ export const SPECS: ToolSpec[] = [
     ),
   },
   {
+    name: "preview_page",
+    kind: "read",
+    description:
+      "Look at a page of the app you're building, served on this PC (http://localhost:PORT/…, e.g. a Vite or Next dev server you've started): takes a screenshot (you'll see it if you can read images) and returns the page's console messages and errors. Use it to check UI changes. Start the dev server first (the user can from the Preview tab); run_command can't keep a server running.",
+    parameters: obj({ url: str("http://localhost:… address"), width: num("Viewport width (default 1280)"), height: num("Viewport height (default 800)") }, ["url"]),
+  },
+  {
     name: "web_search",
     kind: "web",
     description: "Search the web (DuckDuckGo). Returns titles, addresses and snippets. Use web_fetch to read a page.",
@@ -448,6 +455,11 @@ export async function runTool(name: string, args: any, ctx: ToolContext): Promis
         ctx.setTodos(todos);
         return done(`Task list updated (${todos.filter((t) => t.status === "completed").length}/${todos.length} done).`);
       }
+      case "preview_page": {
+        const r = await invoke<{ image: string; console: string[] }>("page_snapshot", { url: String(args.url ?? ""), width: Number(args.width) || null, height: Number(args.height) || null });
+        const con = r.console.length ? `Console:\n${r.console.join("\n")}` : "Console: (nothing logged)";
+        return done(`Screenshot of ${args.url} taken.\n${con}`, { image: r.image });
+      }
       case "web_search": {
         const html = await mcpo("/fetch/fetch", { url: `https://html.duckduckgo.com/html/?q=${encodeURIComponent(String(args.query ?? ""))}`, raw: true, max_length: 120000 }, 45000);
         const hits = parseDdg(html);
@@ -497,6 +509,8 @@ export function describeCall(root: string, name: string, args: any): { verb: str
       return { verb: "Search", target: String(args.query ?? "") };
     case "task":
       return { verb: "Subagent", target: String(args.description ?? "") };
+    case "preview_page":
+      return { verb: "Preview", target: String(args.url ?? "") };
     case "web_fetch":
       return { verb: "Fetch", target: String(args.url ?? "") };
     default: {

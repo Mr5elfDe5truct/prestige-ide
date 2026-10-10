@@ -39,7 +39,7 @@ export class TerminalPane {
     else this.fitActive();
   }
 
-  async add() {
+  async add(label?: string): Promise<string> {
     const id = `t${Date.now().toString(36)}${this.n}`;
     const term = new Terminal({
       fontFamily: "'JetBrains Mono', Consolas, monospace",
@@ -65,9 +65,9 @@ export class TerminalPane {
     const el = h("div", "term-host");
     this.body.append(el);
     const tab = h("div", "term-tab");
-    const label = h("span", "", `PowerShell ${++this.n}`);
+    const tabLabel = h("span", "", label ?? `PowerShell ${++this.n}`);
     const x = h("button", "tab-x", "×");
-    tab.append(label, x);
+    tab.append(tabLabel, x);
     this.bar.insertBefore(tab, this.bar.lastChild);
     const t: Tab = { id, term, fit, el, tab, un: [] };
     this.tabs.push(t);
@@ -102,6 +102,16 @@ export class TerminalPane {
       term.write(`\x1b[31mCouldn't start PowerShell: ${e}\x1b[0m\r\n`);
     }
     term.focus();
+    return id;
+  }
+
+  /** Starts a long-running command (a dev server) in a terminal tab of its own and passes its output on, so the
+   *  Preview pane can pick up the address it prints. */
+  async start(cmd: string, label: string, onOutput: (text: string) => void): Promise<void> {
+    const id = await this.add(label);
+    const t = this.tabs.find((x) => x.id === id);
+    t?.un.push(await listen<{ data: string }>(`pty-out-${id}`, (e) => onOutput(e.payload.data)));
+    await invoke("pty_write", { id, data: cmd + "\r" });
   }
 
   /** Types a command into the active terminal (from "Run in terminal" buttons). */

@@ -303,6 +303,16 @@ export async function runAgent(s: Session, model: ModelInfo, ui: AgentUI, signal
       if (post.output) tmsg.content += `\n\n[PostToolUse hook${post.blocked ? " reported a problem" : ""}]\n${post.output}`;
       tv.end(tmsg);
       if (r.meta.path && r.meta.after !== undefined) ui.fileChanged(r.meta.path, r.meta);
+      // A screenshot goes to the model as a picture in a message of its own (tool results are text only).
+      if (r.meta.image) {
+        const img = r.meta.image;
+        delete tmsg.meta!.image;
+        if (model.vision) {
+          const shot: StoredMessage = { role: "user", content: `Screenshot from preview_page: ${call.arguments?.url}`, images: [img], at: Date.now(), shot: String(call.arguments?.url ?? "") };
+          s.messages.push(shot);
+          ui.note(shot);
+        } else tmsg.content += "\n(This model can't see images, so only the console output above is available.)";
+      }
       ui.save();
       if (signal.aborted) return;
     }

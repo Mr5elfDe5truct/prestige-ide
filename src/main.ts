@@ -32,6 +32,7 @@ import { assistantBlock, h, toolCard, userBubble } from "./ui/transcript";
 import { FilesPane } from "./ui/files";
 import { ChangesPane, sessionChanges } from "./ui/changes";
 import { TerminalPane } from "./ui/terminal";
+import { PreviewPane } from "./ui/preview";
 import { openSettings } from "./ui/settings";
 import { applyRewind, checkpoints, planRewind } from "./rewind";
 import { config, loadConfig, trust, TEMPLATE } from "./config";
@@ -346,6 +347,7 @@ async function setProject(path: string, remember = true) {
   if (remember) rememberProject(project);
   terminal.cwd = project;
   await files.setProject(project);
+  preview.setProject(project);
   void drawGit();
   await refreshConfig();
 }
@@ -1315,10 +1317,12 @@ const changes = new ChangesPane({
   status: (t) => status(t),
 });
 const terminal = new TerminalPane();
+const preview = new PreviewPane(terminal, { status: (t) => status(t) });
 const panes: Record<string, { el: HTMLElement; shown?: () => void }> = {
   files: { el: files.el, shown: () => files.layout() },
   changes: { el: changes.el, shown: () => void changes.render() },
   terminal: { el: terminal.el, shown: () => terminal.ensure() },
+  preview: { el: preview.el, shown: () => preview.shown() },
 };
 for (const p of Object.values(panes)) {
   p.el.hidden = true;

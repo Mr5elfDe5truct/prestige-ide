@@ -1,5 +1,6 @@
 // Prestige IDE: the native side. Files, search, shell, terminals and the app's own data folder.
 mod fsops;
+mod preview;
 mod pty;
 mod shell;
 
@@ -125,6 +126,7 @@ pub fn run() {
             data_list,
             data_delete,
             gpu_count,
+            preview::page_snapshot,
             reveal,
         ])
         .run(tauri::generate_context!())
