@@ -26,6 +26,22 @@ Prestige IDE uses its own **tiers** instead: Deep, Main, Fast and Mini, each map
 | **Fast** | Qwen3.5 9B Uncensored Q4_K_M (installed) | Ollama, 2060 | 6.7 GB | runs beside Main on the second card |
 | **Mini** | Qwen3.5 4B (installed) | Ollama, 2060 | 3.4 GB | session titles and summaries |
 
+## Bake-off results (October 2026)
+
+Twelve coding tasks from the Prestige and Workstation code, run through Prestige IDE and graded by hidden tests
+([full results](../bench/results-2026-10-09.md)):
+
+| Model | Passed | All 12 tasks |
+|---|---|---|
+| **Qwen3.6 35B Heretic, thinking off** | **11/12** | **11 min** |
+| Qwen3.8 27B Huihui abliterated (both GPUs) | 11/12 | 48 min |
+| Qwen3.8 27B HauhauCS Q3 (both GPUs) | 11/12 | 67 min |
+| Qwen3.6 35B Heretic, thinking on | 10/12 | 35 min |
+
+The 35B with thinking off is the default: as good as the 27Bs here at a fraction of the time. Thinking mode didn't
+score better, and on one task every thinking model ran out of time polishing a non-issue. NEO-CODER 27B failed to
+load and wasn't tested; it and Huihui were removed afterwards.
+
 ## Worth trying (not installed)
 
 | Model | Repo | Quant / size | Why |
