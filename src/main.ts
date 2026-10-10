@@ -7,6 +7,7 @@ import "./styles.css";
 import "./ui/monaco";
 import { invoke } from "@tauri-apps/api/core";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { homeDir } from "@tauri-apps/api/path";
 import { errMsg, http, listModels, LLAMA, OLLAMA, type ModelInfo } from "./backends";
 import { compact, makeTitle, runAgent, type AgentUI } from "./agent";
 import {
@@ -94,6 +95,47 @@ async function checkBackends() {
     const s = h("span", `svc ${ok ? "up" : "down"}`, name);
     s.title = `${name} ${hint}: ${ok ? "running" : "not reachable. Start the Workstation (start-all.ps1)"}`;
     el.append(s);
+  }
+  if (!o || !l) {
+    const b = h("button", "btn small start-ws", startingWorkstation ? "Starting…" : "Start") as HTMLButtonElement;
+    b.title = "Start the Custom AI Workstation (start-all.ps1), like Prestige does";
+    b.disabled = startingWorkstation;
+    b.onclick = () => void startWorkstation();
+    el.append(b);
+  }
+}
+
+let startingWorkstation = false;
+
+/** Runs the Workstation's start-all.ps1 (without opening Open WebUI's window). Prestige IDE never stops it: closing
+ *  Prestige does, unless the IDE is still open. */
+async function startWorkstation() {
+  const home = (await homeDir()).replace(/\\/g, "/").replace(/\/$/, "");
+  let root = settings.workstation || `${home}/RG Studios/Workstation`;
+  // install.ps1 writes where it installed the Workstation, if it wasn't the default folder.
+  const recorded = await invoke<string>("fs_read", { path: `${home}/RG Studios/workstation-folder.txt` }).catch(() => "");
+  if (!settings.workstation && recorded.trim()) root = recorded.trim().replace(/\\/g, "/");
+  if (!(await invoke<boolean>("fs_exists", { path: `${root}/start-all.ps1` }))) {
+    status(`No start-all.ps1 in ${root}. Set the Workstation folder in Settings.`);
+    return;
+  }
+  startingWorkstation = true;
+  void checkBackends();
+  status("Starting the Workstation…", true);
+  try {
+    const r = await invoke<{ output: string; code: number | null }>("run_command", {
+      id: "ws-" + Date.now(),
+      cwd: root,
+      command: `& "${root.replace(/\//g, "\\")}\\start-all.ps1" -NoBrowser`,
+      timeoutMs: 300000,
+    });
+    status(r.code === 0 ? "Workstation started" : `start-all.ps1 exited ${r.code}: ${r.output.trim().split(/\r?\n/).pop()}`);
+  } catch (e) {
+    status(`Couldn't start the Workstation: ${errMsg(e)}`);
+  } finally {
+    startingWorkstation = false;
+    await checkBackends();
+    await refreshModels();
   }
 }
 

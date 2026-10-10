@@ -29,6 +29,7 @@ export interface Settings {
   subagentTier: Tier | "same"; // the model subagents use: the session's own, or a tier (Fast runs on the second GPU)
   outputStyle: string; // how replies are written (styles-output.ts); new sessions start with it
   schedules: import("./schedules").Schedule[]; // scheduled agent runs (schedules.ts)
+  workstation: string; // the Custom AI Workstation folder; empty: %USERPROFILE%\RG Studios\Workstation
   trustedConfigs: Record<string, string>; // project settings files the user trusted: lower-cased path -> content hash
 }
 
@@ -55,6 +56,7 @@ export const settings: Settings = {
   subagentTier: "same",
   outputStyle: "default",
   schedules: [],
+  workstation: "",
   trustedConfigs: {},
 };
 

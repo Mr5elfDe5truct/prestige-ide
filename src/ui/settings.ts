@@ -123,6 +123,10 @@ export function openSettings(
   form.append(h("h3", "", "Models"));
   const ctx = num(settings.ollamaCtx, 2048, 262144);
   form.append(labelled("Ollama context (tokens)", "llama.cpp models use the context the router gives them", ctx));
+  const ws = h("input") as HTMLInputElement;
+  ws.value = settings.workstation;
+  ws.placeholder = "%USERPROFILE%\\RG Studios\\Workstation";
+  form.append(labelled("Workstation folder", "where start-all.ps1 is, for the Start button; empty: the default", ws));
   const swap = check(settings.swapBackends);
   form.append(labelled("Free VRAM when switching servers", "unload Ollama before a llama.cpp model and back. Turn on with one GPU", swap));
 
@@ -161,6 +165,7 @@ export function openSettings(
     settings.webTools = web.checked;
     settings.ollamaCtx = Number(ctx.value) || 32768;
     settings.swapBackends = swap.checked;
+    settings.workstation = ws.value.trim().replace(/\\/g, "/").replace(/\/$/, "");
     settings.mcpUrl = mcpUrl.value.trim() || settings.mcpUrl;
     if (mcpChecks.size) settings.mcpEnabled = [...mcpChecks].filter(([, b]) => b.checked).map(([id]) => id);
     await discover(true);
