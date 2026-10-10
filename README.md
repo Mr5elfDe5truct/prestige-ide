@@ -38,7 +38,7 @@
 | 🗂️ | **Sessions** | Every conversation saved on your PC, titled by the Mini model, grouped by date, searchable, pinnable, and resumable with its diffs and tool cards |
 | 🎚️ | **Model tiers** | **Deep**, **Main**, **Fast** and **Mini**, each mapped to any Ollama or llama.cpp model in Settings; switch per session from the model chip. 🔓 marks uncensored models |
 | 📎 | **@-mentions** | `@src/main.ts` attaches a file, `@src/main.ts:10-40` a range, `@src/` a folder listing, with autocomplete |
-| ⌨️ | **Slash commands** | `/init` writes a PRESTIGE.md for the project · `/compact` summarises to free context · `/review` reviews uncommitted changes · `/commit` · `/pr` · `/plan` · `/rewind` · `/model` · `/clear` · `/help`, plus your own in `.prestige/commands/*.md` (`$ARGUMENTS` is replaced) |
+| ⌨️ | **Slash commands** | `/init` writes a PRESTIGE.md for the project · `/compact` summarises to free context · `/review` reviews uncommitted changes · `/commit` · `/pr` · `/plan` · `/rewind` · `/model` · `/style` · `/schedule` · `/clear` · `/help`, plus your own in `.prestige/commands/*.md` (`$ARGUMENTS` is replaced) |
 | 📚 | **Project instructions** | `PRESTIGE.md`, `CLAUDE.md`, `AGENTS.md` or `.github/copilot-instructions.md` in the project root go into every prompt, with the git branch and status |
 | 🧠 | **Context that lasts** | A context meter on the composer; at 80% the conversation is summarised automatically and the work carries on |
 | 🧵 | **Message queue** | Type while it works: your message waits its turn. **Esc** stops, **↑** brings back your last message |
@@ -49,7 +49,13 @@
 | 🤝 | **Subagents** | The `task` tool hands a research job to a helper with a fresh context and read-only tools; only its report comes back, so the main conversation stays small. Runs on the session's model, or a tier you pick (Fast runs on the second GPU) |
 | ⎇ | **Git** | A branch chip in the header with changed files and ahead/behind. Switch or create branches, pull (fast-forward only), push, `/commit`, `/pr` (opens a pull request with `gh`), and **New session in a worktree** for parallel work on its own branch |
 | 📜 | **Settings files and hooks** | `.prestige/settings.json` (see below) holds allow/deny rules and hooks that run PowerShell around the agent |
-| 🧩 | **Text tool-call fallback** | Models that write `<tool_call>` or `<function=…>` into their reply instead of the tool field still work |
+| 🌐 | **Preview** | A Preview tab shows the app you're building from its dev server; **Start dev server** guesses the command (npm/pnpm/yarn `dev`, Django, a static page), runs it in a terminal and picks up its address. The agent's `preview_page` tool screenshots the page with headless Edge or Chrome and reads its console errors, so a vision model can check its own UI changes (local addresses only) |
+| 📓 | **Notebooks** | `.ipynb` files read as numbered cells with their outputs, and `notebook_edit` replaces, inserts or deletes one cell while keeping the file valid |
+| ⏰ | **Scheduled runs** | Agent jobs on a timetable while the app is open (daily at a time, or every few hours), like Prestige's Missions: nightly tests, a dependency check, a morning summary. Unattended runs decline anything that would ask (your settings-file allow rules still apply), and each result is saved as a session with a notification. The clock button or `/schedule` |
+| 🎨 | **Output styles** | `/style`: Default, Terse, Explanatory, or Learning (it leaves small `TODO(you)` pieces for you to write), plus your own in `.prestige/output-styles/*.md` |
+| 🛡️ | **Guarded reads and fetches** | Reading outside the project asks first, and fetching a web page asks once per site, so a repo with hidden instructions can't quietly send your files out |
+| 🎩 | **Works with Prestige** | **Start** brings up the Workstation when its models aren't running; Prestige leaves the stack running while the IDE is open, and opens the IDE from its top bar |
+| 🧩 | **Text tool-call fallback** | Models that write `<tool_call>`, `<function=…>` or a bare tool name with `<param>` tags into their reply instead of the tool field still work |
 
 ## 📜 Settings files and hooks
 
@@ -129,8 +135,12 @@ npm run tauri build   # installer in src-tauri\target\release\bundle\nsis\
 | `src/agent.ts` | the agent loop, system prompt (project instructions, git state), compaction, titles |
 | `src/tools.ts` | tool schemas, permission rules and execution |
 | `src/backends.ts` | streaming chat with tool calls for Ollama and llama.cpp, shared shape with Prestige |
-| `src/ui/` | transcript and tool cards, Files (Monaco), Changes (Monaco diff), Terminal (xterm.js), settings |
-| `src-tauri/` (Rust + Tauri 2) | file reading, writing, glob and grep with `ignore`/`globset`/`regex`, PowerShell runs with streamed output and stop, ConPTY terminals via `portable-pty`, sessions and settings in `%APPDATA%\com.rgstudios.prestige-ide` |
+| `src/config.ts`, `src/hooks.ts` | settings files: allow/deny rules, trust, hooks |
+| `src/subagent.ts`, `src/mcp.ts`, `src/rewind.ts`, `src/git.ts` | subagents, MCP tools, checkpoints, the branch chip |
+| `src/schedules.ts`, `src/notebook.ts`, `src/styles-output.ts` | scheduled runs, notebooks, output styles |
+| `src/ui/` | transcript and tool cards, Files (Monaco), Changes (Monaco diff), Terminal (xterm.js), Preview, settings, schedules |
+| `src-tauri/` (Rust + Tauri 2) | file reading, writing, glob and grep with `ignore`/`globset`/`regex`, PowerShell runs with streamed output and stop, ConPTY terminals via `portable-pty`, page screenshots for preview_page, sessions and settings in `%APPDATA%\com.rgstudios.prestige-ide` |
+| `test/`, `bench/` | tests against a fake Tauri backend (`npm test`, `cargo test`), and the model bake-off |
 
 ## 🔗 Part of the R.G. Studios stack
 

@@ -1,7 +1,7 @@
 {
   "name": "prestige-ide",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Prestige IDE by R.G. Studios: a local agentic coding IDE that runs on your own models.",
   "author": "Ryan B. Gyles",
   "license": "MIT",
