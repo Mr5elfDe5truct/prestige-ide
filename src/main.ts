@@ -37,6 +37,7 @@ import { applyRewind, checkpoints, planRewind } from "./rewind";
 import { config, loadConfig, trust, TEMPLATE } from "./config";
 import { runHooks } from "./hooks";
 import { appVersion, checkForUpdates } from "./updates";
+import { listStyles } from "./styles-output";
 import { addWorktree, branches as gitBranches, createBranch, pull, push, slug, status as gitStatus, switchBranch, type GitStatus } from "./git";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -328,6 +329,7 @@ function ensureSession(): Session {
     todos: [],
     allow: [],
     think: settings.think,
+    outputStyle: settings.outputStyle,
   };
   changes.setSession(session);
   return session;
@@ -526,6 +528,7 @@ const SLASH: { cmd: string; hint: string }[] = [
   { cmd: "/plan", hint: "switch to Plan mode" },
   { cmd: "/rewind", hint: "go back to an earlier message and undo the file changes since" },
   { cmd: "/model", hint: "pick a model" },
+  { cmd: "/style", hint: "how replies are written: default, terse, explanatory, learning, or your own" },
   { cmd: "/review", hint: "review the uncommitted changes for bugs" },
   { cmd: "/commit", hint: "write a commit message and commit the changes" },
   { cmd: "/pr", hint: "push this branch and open a pull request with gh" },
@@ -737,6 +740,29 @@ async function send() {
         ]);
         return;
       }
+      case "/style": {
+        const styles = await listStyles(project);
+        const cur = session?.outputStyle ?? settings.outputStyle;
+        const pick = (id: string) => {
+          settings.outputStyle = id;
+          void saveSettings();
+          if (session) {
+            session.outputStyle = id;
+            void saveSession(session);
+          }
+          status(`Output style: ${styles.find((s) => s.id === id)?.label ?? id}`);
+        };
+        const named = arg && styles.find((s) => s.id.toLowerCase() === arg.toLowerCase());
+        if (named) pick(named.id);
+        else
+          showMenu($("mode-btn"), [
+            "Output style",
+            ...styles.map((s) => ({ label: s.label, sub: s.hint, on: s.id === cur, action: () => pick(s.id) })),
+            "sep",
+            { label: "Add your own…", sub: "a Markdown file in .prestige/output-styles/", action: () => sendHelpStyle() },
+          ]);
+        return;
+      }
       case "/model":
         $("model-btn").click();
         return;
@@ -926,6 +952,23 @@ function drawQueue() {
     row.append(x);
     q.append(row);
   });
+}
+
+/** Explains how to write a custom output style. */
+function sendHelpStyle() {
+  const m: StoredMessage = {
+    role: "assistant",
+    modelName: "Prestige IDE",
+    content: `Write the instructions for how replies should read in a Markdown file:
+
+- \`.prestige/output-styles/<name>.md\` in a project, for that project
+- \`%USERPROFILE%\\.prestige\\output-styles\\<name>.md\`, for every project
+
+The file's text replaces the reply rules in the system prompt, so write it as instructions ("Answer in bullet points…"). Then pick it with \`/style <name>\`. A file named like a built-in style (\`terse.md\`) replaces it.`,
+  };
+  transcript.append(assistantBlock(m, openPath, scroll).el);
+  $("welcome").hidden = true;
+  scroll();
 }
 
 function approvePlan(mode: PermissionMode) {

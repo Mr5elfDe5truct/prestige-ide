@@ -5,6 +5,7 @@ import { complete, errMsg, extractTextToolCalls, streamChat, type ChatMessage, t
 import { settings, type Session, type StoredMessage, type Todo, type ToolMeta } from "./store";
 import { allowRuleFor, needsApproval, runTool, toolSchemas } from "./tools";
 import { runSubagent } from "./subagent";
+import { stylePrompt } from "./styles-output";
 import { decide } from "./config";
 import { runHooks } from "./hooks";
 
@@ -66,7 +67,7 @@ async function gitLine(root: string): Promise<string> {
 }
 
 export async function systemPrompt(s: Session, model: ModelInfo): Promise<string> {
-  const [notes, git] = await Promise.all([projectNotes(s.project), gitLine(s.project)]);
+  const [notes, git, replies] = await Promise.all([projectNotes(s.project), gitLine(s.project), stylePrompt(s.outputStyle, s.project)]);
   const planMode =
     s.mode === "plan"
       ? `\n\n# Plan mode is ON\nYou may only read and search: read_file, list_dir, glob, grep (and web tools). Do not try to change files, run commands or keep a todo list. Read only what you need (usually a few files), then stop calling tools and reply with a concise, numbered implementation plan: which files change and what changes in each. The user approves the plan before anything is changed.`
@@ -84,8 +85,7 @@ ${s.mode === "plan" ? "" : "- For multi-step work, keep a todo list with todo_wr
 - Never invent results. If a command failed or a step was skipped, say so.
 
 # Replies
-- Be concise and direct. Use GitHub-flavored Markdown. Refer to code as path:line.
-- When you finish a task, say in a few lines what you changed and how you checked it.
+${replies}
 
 # Environment
 - OS: Windows. Shell for run_command: Windows PowerShell 5.1 (use PowerShell syntax; no && chaining, use ; or if ($?) { }).

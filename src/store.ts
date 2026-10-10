@@ -27,6 +27,7 @@ export interface Settings {
   mcpEnabled: string[]; // the servers whose tools the agent gets
   think: boolean; // new sessions let the model think first
   subagentTier: Tier | "same"; // the model subagents use: the session's own, or a tier (Fast runs on the second GPU)
+  outputStyle: string; // how replies are written (styles-output.ts); new sessions start with it
   trustedConfigs: Record<string, string>; // project settings files the user trusted: lower-cased path -> content hash
 }
 
@@ -51,6 +52,7 @@ export const settings: Settings = {
   mcpEnabled: ["workstation", "browser", "time"],
   think: false, // off by default: in the bake-off it scored as well and ran about 3x faster (bench/results-2026-10-09.md)
   subagentTier: "same",
+  outputStyle: "default",
   trustedConfigs: {},
 };
 
@@ -112,6 +114,7 @@ export interface Session {
   allow: string[]; // "run_command:npm test", "edit:*" … approved for the rest of the session
   pinned?: boolean;
   think?: boolean; // false: ask the model not to think first (faster); unset: the model's default
+  outputStyle?: string;
 }
 
 export interface SessionStub {
