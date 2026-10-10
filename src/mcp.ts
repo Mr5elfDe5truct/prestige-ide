@@ -18,9 +18,10 @@ export interface McpServer {
   error?: string;
 }
 
-// Read-only by name. Everything else (writes, clicks, processes, renders, the webcam) asks first.
+// Read-only by name. Everything else (writes, clicks, processes, renders, the webcam) asks first. A fetch isn't on the
+// list: the address it fetches can carry data out, so it asks like the built-in web_fetch.
 const SAFE =
-  /^(read_|list_|get_(?!config)|search_|directory_tree|reddit_|hf_models|github_search|scout_report|job_status|video_status|fetch$|convert_time$|browser_(snapshot|take_screenshot|tabs|console_messages|network_requests|network_request|find)$)/;
+  /^(read_|list_|get_(?!config)|search_|directory_tree|reddit_|hf_models|github_search|scout_report|job_status|video_status|convert_time$|browser_(snapshot|take_screenshot|tabs|console_messages|network_requests|network_request|find)$)/;
 const ALWAYS_ASK = /^(webcam_snapshot|set_config_value|get_config|read_media_file)$/;
 
 /** Inlines $ref schemas and drops OpenAPI-only fields so small models get plain JSON schema. */

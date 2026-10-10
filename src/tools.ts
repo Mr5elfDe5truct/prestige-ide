@@ -139,8 +139,59 @@ export function kindOf(name: string): Kind | undefined {
 }
 
 /** The rule an approval adds when the user says "don't ask again" for this call. */
+const READ_PATH_TOOLS = new Set(["read_file", "list_dir", "glob", "grep"]);
+
+/** True when p is the project folder or inside it (Windows paths: case-insensitive, either slash). */
+export function isInside(root: string, p: string): boolean {
+  const r = root.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  const q = p.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  return q === r || q.startsWith(r + "/");
+}
+
+/** A read tool aimed outside the project. Reading there asks first: a prompt hidden in a repo could otherwise have
+ *  the model read secrets elsewhere on the PC (SSH keys, browser data) and send them out through a web fetch. */
+function readsOutside(name: string, args: any, root?: string): boolean {
+  if (!root) return false;
+  if (READ_PATH_TOOLS.has(name)) return !isInside(root, resolvePath(root, args?.path));
+  // Read-only MCP tools (the filesystem and desktop servers' read_file, list_directory …) name their files in path or
+  // paths: they get the same check.
+  if (name.includes("__")) {
+    const paths = [args?.path, ...(Array.isArray(args?.paths) ? args.paths : [])].filter((p) => typeof p === "string" && p);
+    return paths.some((p) => !isInside(root, resolvePath(root, p)));
+  }
+  return false;
+}
+
+const hostOf = (url: unknown) => {
+  try {
+    return new URL(String(url)).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+};
+
+/** What the approval prompt asks, and what its "don't ask again" button says. */
+export function approvalText(name: string, args: any, root: string): { question: string; always: string } {
+  const kind = kindOf(name);
+  if (name === "run_command") {
+    const two = String(args?.command ?? "").trim().split(/\s+/).slice(0, 2).join(" ");
+    return { question: "Run this command?", always: `Yes, and don't ask again for \`${two}\`` };
+  }
+  if (kind === "edit") return { question: `Make this change to ${relPath(root, resolvePath(root, args?.path))}?`, always: "Yes, allow all edits this session" };
+  if (readsOutside(name, args, root)) {
+    return { question: `Read outside the project: ${resolvePath(root, args?.path)}?`, always: "Yes, allow reading outside the project this session" };
+  }
+  if (name === "web_fetch") {
+    const host = hostOf(args?.url) || "this address";
+    return { question: `Fetch a page from ${host}?`, always: `Yes, and don't ask again for ${host}` };
+  }
+  return { question: `Allow ${name}?`, always: `Yes, and don't ask again for ${name}` };
+}
+
 export function allowRuleFor(name: string, args: any): string {
   if (kindOf(name) === "edit") return "edit:*";
+  if (READ_PATH_TOOLS.has(name) || (kindOf(name) === "read" && name.includes("__") && (args?.path || args?.paths))) return "read-outside:*";
+  if (name === "web_fetch") return `web_fetch:${hostOf(args?.url)}`;
   if (name === "run_command") {
     const words = String(args?.command ?? "").trim().split(/\s+/);
     // "npm run build" → "npm run", "git status" → "git status", "cargo test --x" → "cargo test"
@@ -149,10 +200,13 @@ export function allowRuleFor(name: string, args: any): string {
   return `${name}:*`;
 }
 
-export function needsApproval(name: string, args: any, mode: PermissionMode, allow: string[]): boolean {
+export function needsApproval(name: string, args: any, mode: PermissionMode, allow: string[], root?: string): boolean {
   const kind = kindOf(name);
-  if (!kind || kind === "read" || kind === "web" || kind === "meta") return false;
+  if (!kind || kind === "meta") return false;
   if (mode === "bypass") return false;
+  if (kind === "read") return readsOutside(name, args, root) && !allow.includes("read-outside:*");
+  // Fetching asks once per site (the URL could carry data out); searching doesn't ask.
+  if (kind === "web") return name === "web_fetch" && !allow.includes(`web_fetch:${hostOf(args?.url)}`);
   if (kind === "edit" && (mode === "acceptEdits" || allow.includes("edit:*"))) return false;
   if (name === "run_command") {
     const cmd = String(args?.command ?? "").trim();

@@ -2,7 +2,7 @@
 import { beforeEach, describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { fake } from "./fake-tauri.ts";
-import { allowRuleFor, needsApproval, relPath, resolvePath, runTool, type ToolContext } from "../src/tools";
+import { allowRuleFor, approvalText, isInside, needsApproval, relPath, resolvePath, runTool, type ToolContext } from "../src/tools";
 
 const ROOT = "C:/proj";
 const ctx = (): ToolContext => ({ root: ROOT, signal: new AbortController().signal, setTodos: () => {} });
@@ -150,3 +150,40 @@ describe("approvals", () => {
     assert.equal(needsApproval("run_command", cmd("npm test\r\nRemove-Item x"), "ask", allow), true);
   });
 });
+
+describe("reading outside the project and fetching pages", () => {
+  test("reads inside the project don't ask; outside they do, until allowed for the session", () => {
+    assert.equal(needsApproval("read_file", { path: "src/a.ts" }, "ask", [], ROOT), false);
+    assert.equal(needsApproval("read_file", { path: "C:/Users/me/.ssh/id_rsa" }, "ask", [], ROOT), true);
+    assert.equal(needsApproval("grep", { pattern: "x", path: "../other" }, "ask", [], ROOT), true);
+    assert.equal(needsApproval("list_dir", { path: "C:\\Users" }, "acceptEdits", [], ROOT), true);
+    assert.equal(needsApproval("glob", { pattern: "*", path: "C:/Users" }, "plan", [], ROOT), true);
+    const rule = allowRuleFor("read_file", { path: "C:/x" });
+    assert.equal(needsApproval("read_file", { path: "C:/Users/me/x" }, "ask", [rule], ROOT), false);
+    assert.equal(needsApproval("read_file", { path: "C:/Users/me/x" }, "bypass", [], ROOT), false);
+  });
+
+  test("a sibling folder with the same prefix is outside", () => {
+    assert.equal(isInside("C:/proj", "C:/proj/a"), true);
+    assert.equal(isInside("C:/proj", "c:\\PROJ"), true);
+    assert.equal(isInside("C:/proj", "C:/project-secrets/a"), false);
+  });
+
+  test("fetching asks once per site; searching doesn't ask", () => {
+    const page = (url: string) => ({ url });
+    assert.equal(needsApproval("web_search", { query: "x" }, "ask", [], ROOT), false);
+    assert.equal(needsApproval("web_fetch", page("https://docs.python.org/3/"), "ask", [], ROOT), true);
+    const rule = allowRuleFor("web_fetch", page("https://docs.python.org/3/"));
+    assert.equal(rule, "web_fetch:docs.python.org");
+    assert.equal(needsApproval("web_fetch", page("https://docs.python.org/3/library/re.html"), "ask", [rule], ROOT), false);
+    assert.equal(needsApproval("web_fetch", page("https://evil.example/?k=secret"), "ask", [rule], ROOT), true);
+    assert.equal(needsApproval("web_fetch", page("not a url"), "ask", [rule], ROOT), true);
+  });
+
+  test("the prompt says what it's asking", () => {
+    assert.match(approvalText("web_fetch", { url: "https://evil.example/x" }, ROOT).always, /evil\.example/);
+    assert.match(approvalText("read_file", { path: "C:/Users/me/.ssh/id_rsa" }, ROOT).question, /outside the project/);
+    assert.equal(approvalText("edit_file", { path: "src/a.ts" }, ROOT).question, "Make this change to src/a.ts?");
+  });
+});
+

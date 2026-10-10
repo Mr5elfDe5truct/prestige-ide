@@ -7,7 +7,7 @@ import { monaco } from "./monaco";
 import type { StreamStats, ToolCall } from "../backends";
 import type { Approval, AssistantView, ToolView } from "../agent";
 import type { StoredMessage } from "../store";
-import { describeCall, kindOf, relPath, resolvePath } from "../tools";
+import { approvalText, describeCall, kindOf, relPath, resolvePath } from "../tools";
 import { invoke } from "@tauri-apps/api/core";
 import { langFor } from "./lang";
 
@@ -331,18 +331,11 @@ export function toolCard(call: ToolCall, m: StoredMessage, hooks: ToolCardHooks)
     new Promise<Approval>((resolve) => {
       card.classList.add("asking", "open");
       const box = h("div", "approve");
-      const q = h("div", "approve-q", call.name === "run_command" ? "Run this command?" : kind === "edit" ? `Make this change to ${target}?` : `Allow ${verb}?`);
+      const text = approvalText(call.name, call.arguments ?? {}, hooks.root);
+      const q = h("div", "approve-q", text.question);
       const btns = h("div", "approve-btns");
       const yes = h("button", "btn primary", "Yes");
-      const always = h(
-        "button",
-        "btn",
-        call.name === "run_command"
-          ? `Yes, and don't ask again for \`${String(call.arguments?.command ?? "").trim().split(/\s+/).slice(0, 2).join(" ")}\``
-          : kind === "edit"
-            ? "Yes, allow all edits this session"
-            : `Yes, and don't ask again for ${verb}`,
-      );
+      const always = h("button", "btn", text.always);
       const no = h("button", "btn", "No");
       const fb = h("input", "approve-fb") as HTMLInputElement;
       fb.placeholder = "Or tell it what to do instead, then press Enter";

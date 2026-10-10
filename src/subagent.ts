@@ -1,7 +1,7 @@
 // Subagents: the main agent hands a self-contained research job to a helper with a fresh context and read-only
 // tools. The helper's searching and reading stay out of the main conversation; only its report comes back.
 import { errMsg, extractTextToolCalls, streamChat, type ChatMessage, type ModelInfo } from "./backends";
-import { describeCall, runTool, toolSchemas } from "./tools";
+import { describeCall, needsApproval, runTool, toolSchemas } from "./tools";
 
 // Local models tend to keep reading; a budget and a nudge make them report once they can answer.
 const MAX_TURNS = 16;
@@ -63,9 +63,13 @@ export async function runSubagent(
       const d = describeCall(root, c.name, c.arguments ?? {});
       progress(`${d.verb} ${d.target}`);
       const allowed = tools.some((t) => t.function.name === c.name);
-      const r = allowed
-        ? await runTool(c.name, c.arguments ?? {}, { root, signal, setTodos: () => {} })
-        : { content: `Error: ${c.name} isn't available to a read-only subagent.`, meta: { ok: false } };
+      // A subagent can't ask the user, so anything that would need approval (reading outside the project, fetching a
+      // page) is refused: the main agent can do it, with the user's say-so.
+      const r = !allowed
+        ? { content: `Error: ${c.name} isn't available to a read-only subagent.`, meta: { ok: false } }
+        : needsApproval(c.name, c.arguments ?? {}, "ask", [], root)
+          ? { content: "Error: a subagent can't read outside the project or fetch web pages. Say in your report what you'd need, and the main agent can get it.", meta: { ok: false } }
+          : await runTool(c.name, c.arguments ?? {}, { root, signal, setTodos: () => {} });
       msgs.push({ role: "tool", content: r.content.slice(0, 30000), tool_call_id: c.id, tool_name: c.name });
     }
     if (turn === NUDGE_AT) {

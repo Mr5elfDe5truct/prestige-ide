@@ -255,7 +255,7 @@ export async function runAgent(s: Session, model: ModelInfo, ui: AgentUI, signal
         tv.end(tmsg);
         continue;
       }
-      if (rule?.decision !== "allow" && needsApproval(call.name, call.arguments, s.mode, s.allow)) {
+      if (rule?.decision !== "allow" && needsApproval(call.name, call.arguments, s.mode, s.allow, s.project)) {
         const a = await ui.approve(call);
         if (signal.aborted) {
           tmsg.content = "Not run: the user interrupted.";
