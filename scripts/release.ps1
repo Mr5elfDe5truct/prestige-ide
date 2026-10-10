@@ -2,6 +2,7 @@
 #   .\scripts\release.ps1 -Notes "What changed"            build + publish the version in tauri.conf.json
 #   .\scripts\release.ps1 -Notes "..." -Title "Prestige IDE 0.2.0 · Something"
 #   .\scripts\release.ps1 -Notes "..." -NoPublish           build and write latest.json only
+#   .\scripts\release.ps1 -NotesFile notes.md               longer notes from a Markdown file
 #
 # Needs the updater signing key (made once with `npx tauri signer generate`), kept outside the repo:
 #   %USERPROFILE%\RG Studios\keys\prestige-ide-updater.key       private key (never commit or share it)
@@ -9,11 +10,14 @@
 # Override the location with $env:PRESTIGE_KEYS. Auto-update reads GitHub's latest release, so the repo must be public
 # for installed copies to see it.
 param(
-    [Parameter(Mandatory)][string]$Notes,
+    [string]$Notes,
+    [string]$NotesFile,
     [string]$Title,
     [switch]$NoPublish
 )
 $ErrorActionPreference = "Stop"
+if ($NotesFile) { $Notes = Get-Content $NotesFile -Raw -Encoding UTF8 }
+if (-not $Notes) { throw "Give -Notes or -NotesFile" }
 $Repo = "Mr5elfDe5truct/prestige-ide"
 $Root = Split-Path $PSScriptRoot -Parent
 $Keys = if ($env:PRESTIGE_KEYS) { $env:PRESTIGE_KEYS } else { Join-Path $env:USERPROFILE "RG Studios\keys" }
@@ -63,6 +67,8 @@ Write-Host "Built $($exe.FullName)"
 Write-Host "Wrote $latest"
 
 if ($NoPublish) { return }
-gh release create "v$version" $exe.FullName $latest --repo $Repo --title $Title --notes $Notes --latest
+$notesTmp = Join-Path $env:TEMP "prestige-ide-notes.md"
+[IO.File]::WriteAllText($notesTmp, $Notes, (New-Object Text.UTF8Encoding $false))
+gh release create "v$version" $exe.FullName $latest --repo $Repo --title $Title --notes-file $notesTmp --latest
 if ($LASTEXITCODE) { throw "gh release failed" }
 Write-Host "Published https://github.com/$Repo/releases/tag/v$version"
