@@ -45,7 +45,10 @@ fn data_write(app: AppHandle, rel: String, content: String) -> Result<(), String
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
     // Write then rename, so a crash mid-write never leaves half a session.
-    let tmp = p.with_extension("tmp");
+    // Each write gets its own temp name, so two saves of the same file at once can't trip over one temp file.
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let tmp = p.with_extension(format!("{}-{n}.tmp", std::process::id()));
     fs::write(&tmp, content).map_err(|e| e.to_string())?;
     fs::rename(&tmp, &p).map_err(|e| e.to_string())
 }
