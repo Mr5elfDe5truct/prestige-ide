@@ -1659,3 +1659,44 @@ body.no-sidebar #sidebar {
   border: 0;
   background: #fff;
 }
+
+.sched-list {
+  margin: 8px 0;
+}
+.sched-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--line);
+}
+.sched-info {
+  flex: 1;
+  min-width: 0;
+}
+.sched-name {
+  font-weight: 600;
+}
+.sched-prompt {
+  width: 100%;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--line-2);
+  border-radius: 7px;
+  padding: 8px 10px;
+  font: 13px var(--sans);
+  margin: 4px 0 8px;
+  resize: vertical;
+}
+.sched-days {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 6px 0;
+  font-size: 13px;
+}
+.sched-day {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+}

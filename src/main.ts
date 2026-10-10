@@ -33,6 +33,8 @@ import { FilesPane } from "./ui/files";
 import { ChangesPane, sessionChanges } from "./ui/changes";
 import { TerminalPane } from "./ui/terminal";
 import { PreviewPane } from "./ui/preview";
+import { openSchedules } from "./ui/schedules-dialog";
+import { runSchedule, startScheduler, type RunnerHooks } from "./schedules";
 import { openSettings } from "./ui/settings";
 import { applyRewind, checkpoints, planRewind } from "./rewind";
 import { config, loadConfig, trust, TEMPLATE } from "./config";
@@ -534,6 +536,7 @@ const SLASH: { cmd: string; hint: string }[] = [
   { cmd: "/review", hint: "review the uncommitted changes for bugs" },
   { cmd: "/commit", hint: "write a commit message and commit the changes" },
   { cmd: "/pr", hint: "push this branch and open a pull request with gh" },
+  { cmd: "/schedule", hint: "agent runs on a timetable (nightly tests, reports)" },
   { cmd: "/help", hint: "what Prestige IDE can do" },
 ];
 
@@ -715,6 +718,9 @@ async function send() {
     switch (cmd) {
       case "/clear":
         newSession();
+        return;
+      case "/schedule":
+        showSchedules();
         return;
       case "/help":
         showHelp();
@@ -1382,6 +1388,40 @@ try {
 }
 
 $("toggle-sidebar").onclick = () => document.body.classList.toggle("no-sidebar");
+// ---------- scheduled runs
+
+const scheduleHooks: RunnerHooks = {
+  busy: () => !!running,
+  done: (s, sch) => {
+    void drawSessions();
+    status(`Scheduled run “${sch.name}” finished`);
+    try {
+      if (Notification.permission === "granted") new Notification(`Prestige IDE: ${sch.name} finished`, { body: s.title });
+    } catch {
+      // notifications unavailable
+    }
+  },
+};
+
+function showSchedules() {
+  openSchedules($<HTMLDialogElement>("settings"), {
+    project,
+    openSession: (id) => void openSession(id),
+    runNow: (sch) => {
+      if (running) {
+        status("Finish or stop the current task first");
+        return;
+      }
+      status(`Running “${sch.name}”…`, true);
+      void runSchedule(sch, scheduleHooks).then((s) => {
+        if (s) void openSession(s.id);
+        else status("Another scheduled run is still going");
+      });
+    },
+  });
+}
+$("schedules-btn").onclick = () => showSchedules();
+
 $("settings-btn").onclick = () =>
   openSettings(
     $<HTMLDialogElement>("settings"),
@@ -1420,6 +1460,8 @@ async function start() {
   await refreshModels();
   void checkBackends();
   setInterval(() => void checkBackends(), 20000);
+  startScheduler(scheduleHooks);
+  if (settings.schedules.length && "Notification" in window && Notification.permission === "default") void Notification.requestPermission();
   if (settings.recentProjects[0]) await setProject(settings.recentProjects[0], false);
   // Quietly look for a new version a few seconds after start (not in dev builds, which have nothing to update).
   if (!import.meta.env.DEV) setTimeout(() => void checkForUpdates($("update-bar"), () => !!running), 4000);

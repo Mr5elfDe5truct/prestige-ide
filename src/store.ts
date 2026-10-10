@@ -28,6 +28,7 @@ export interface Settings {
   think: boolean; // new sessions let the model think first
   subagentTier: Tier | "same"; // the model subagents use: the session's own, or a tier (Fast runs on the second GPU)
   outputStyle: string; // how replies are written (styles-output.ts); new sessions start with it
+  schedules: import("./schedules").Schedule[]; // scheduled agent runs (schedules.ts)
   trustedConfigs: Record<string, string>; // project settings files the user trusted: lower-cased path -> content hash
 }
 
@@ -53,6 +54,7 @@ export const settings: Settings = {
   think: false, // off by default: in the bake-off it scored as well and ran about 3x faster (bench/results-2026-10-09.md)
   subagentTier: "same",
   outputStyle: "default",
+  schedules: [],
   trustedConfigs: {},
 };
 
