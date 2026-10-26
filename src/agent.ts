@@ -3,7 +3,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { complete, errMsg, extractTextToolCalls, streamChat, type ChatMessage, type ModelInfo, type StreamStats, type ToolCall } from "./backends";
 import { settings, type Session, type StoredMessage, type Todo, type ToolMeta } from "./store";
-import { allowRuleFor, needsApproval, runTool, toolSchemas } from "./tools";
+import { allowRuleFor, describeCall, needsApproval, runTool, toolSchemas } from "./tools";
 import { runSubagent } from "./subagent";
 import { stylePrompt } from "./styles-output";
 import { decide } from "./config";
@@ -30,6 +30,9 @@ export interface AgentUI {
   todos(t: Todo[]): void;
   fileChanged(path: string, meta: ToolMeta): void;
   status(text: string): void;
+  /** What the agent is doing now, for the working readout: `tool` is the tool it's calling (null: none; left out:
+   *  unchanged), `who` the model doing it. */
+  step(text: string, tool?: string | null, who?: string): void;
   save(): void;
   subagentModel(): ModelInfo; // the model subagents run on
   note(msg: StoredMessage): void; // a message added by a hook
@@ -157,6 +160,9 @@ export async function runAgent(s: Session, model: ModelInfo, ui: AgentUI, signal
     const msg: StoredMessage = { role: "assistant", content: "", thinking: "", modelName: model.name, at: Date.now() };
     s.messages.push(msg);
     const view = ui.assistant(msg);
+    ui.step(turn ? "Reading the results…" : `Waiting for ${model.name}…`, null, model.name);
+    let wrote = false;
+    let thought = false;
     let result: StreamStats & { toolCalls: ToolCall[] };
     try {
       result = await streamChat(
@@ -166,10 +172,14 @@ export async function runAgent(s: Session, model: ModelInfo, ui: AgentUI, signal
           onToken: (t) => {
             msg.content += t;
             view.text(t);
+            if (!wrote) ui.step("Writing…");
+            wrote = true;
           },
           onThinking: (t) => {
             msg.thinking += t;
             view.thinking(t);
+            if (!thought) ui.step("Thinking…");
+            thought = true;
           },
           onStats: (st) => view.stats(st),
         },
@@ -223,7 +233,7 @@ export async function runAgent(s: Session, model: ModelInfo, ui: AgentUI, signal
 
     let stop = false;
     for (const call of calls) {
-      const tmsg: StoredMessage = { role: "tool", content: "", tool_call_id: call.id, tool_name: call.name, at: Date.now() };
+      const tmsg: StoredMessage = { role: "tool", content: "", tool_call_id: call.id, tool_name: call.name, modelName: model.name, at: Date.now() };
       if (stop) {
         tmsg.content = "Not run: the user stopped the previous step.";
         tmsg.meta = { ok: false, denied: true };
@@ -240,6 +250,9 @@ export async function runAgent(s: Session, model: ModelInfo, ui: AgentUI, signal
       }
       s.messages.push(tmsg);
       const tv = ui.tool(call, tmsg);
+      const { verb, target } = describeCall(s.project, call.name, call.arguments ?? {});
+      const doing = target ? `${verb} ${target}` : verb;
+      ui.step(doing, call.name);
       const rule = decide(call.name, call.arguments, s.project);
       if (rule?.decision === "deny") {
         tmsg.content = `Denied by the rule "${rule.rule}" in the settings files. Don't retry it or work around it (for example with a shell command): tell the user it's blocked and ask how to proceed.`;
@@ -256,6 +269,7 @@ export async function runAgent(s: Session, model: ModelInfo, ui: AgentUI, signal
         continue;
       }
       if (rule?.decision !== "allow" && needsApproval(call.name, call.arguments, s.mode, s.allow, s.project)) {
+        ui.step("Waiting for your approval…", call.name);
         const a = await ui.approve(call);
         if (signal.aborted) {
           tmsg.content = "Not run: the user interrupted.";
@@ -277,8 +291,13 @@ export async function runAgent(s: Session, model: ModelInfo, ui: AgentUI, signal
       }
       if (call.name === "task") {
         const sub = ui.subagentModel();
-        ui.status(`Subagent working on ${sub.name}…`);
-        const out = await runSubagent(s.project, sub, String(call.arguments?.prompt ?? ""), signal, (line) => tv.output(line + "\n"));
+        tmsg.modelName = sub.name;
+        ui.step(doing, call.name, `subagent · ${sub.name}`);
+        const out = await runSubagent(s.project, sub, String(call.arguments?.prompt ?? ""), signal, (line) => {
+          tv.output(line + "\n");
+          ui.step(line);
+        });
+        ui.step("Reading the subagent's report…", null, model.name);
         tmsg.content = out.report;
         tmsg.meta = { ok: out.ok };
         tv.end(tmsg);
@@ -286,7 +305,7 @@ export async function runAgent(s: Session, model: ModelInfo, ui: AgentUI, signal
         if (signal.aborted) return;
         continue;
       }
-      ui.status(`Running ${call.name}…`);
+      ui.step(doing);
       const r = await runTool(call.name, call.arguments ?? {}, {
         root: s.project,
         signal,
@@ -316,14 +335,12 @@ export async function runAgent(s: Session, model: ModelInfo, ui: AgentUI, signal
       ui.save();
       if (signal.aborted) return;
     }
-    ui.status("");
     if (stop) return;
 
     // Keep the conversation inside the model's context.
     if (settings.autoCompact && result.promptTokens && result.promptTokens > model.ctx * 0.8) {
-      ui.status("Compacting the conversation…");
+      ui.step("Compacting the conversation…", null);
       await compact(s, model, "", signal);
-      ui.status("");
       ui.save();
       return runAgent(s, model, ui, signal);
     }

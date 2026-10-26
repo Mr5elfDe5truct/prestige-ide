@@ -110,6 +110,7 @@ export async function runSchedule(sch: Schedule, hooks: RunnerHooks): Promise<Se
       todos: (t) => (s.todos = t),
       fileChanged() {},
       status() {},
+      step() {},
       save: () => void saveSession(s),
       subagentModel: () => model,
       note() {},

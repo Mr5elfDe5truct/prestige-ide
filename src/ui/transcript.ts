@@ -236,8 +236,10 @@ export function toolCard(call: ToolCall, m: StoredMessage, hooks: ToolCardHooks)
   const verbEl = h("span", "tool-verb", verb);
   const targetEl = h("span", "tool-target", target);
   const info = h("span", "tool-info");
+  // Which model called it (a subagent's, for the task tool).
+  const by = h("span", "tool-by", m.modelName ? `by ${m.modelName}` : "");
   const chev = h("span", "tool-chev", "›");
-  head.append(dot, verbEl, targetEl, info, chev);
+  head.append(dot, verbEl, targetEl, info, by, chev);
   const body = h("div", "tool-body");
   card.append(head, body);
   head.onclick = () => card.classList.toggle("open");

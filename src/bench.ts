@@ -39,6 +39,7 @@ export async function benchRun(r: BenchRun) {
     todos() {},
     fileChanged() {},
     status() {},
+    step() {},
     save() {},
     subagentModel: () => model,
     note() {},
