@@ -43,12 +43,14 @@ import { runHooks } from "./hooks";
 import { appVersion, checkForUpdates } from "./updates";
 import { listStyles } from "./styles-output";
 import { addWorktree, branches as gitBranches, createBranch, pull, push, slug, status as gitStatus, switchBranch, type GitStatus } from "./git";
+import { initWorking, startWork, stopWork, workStep } from "./ui/working";
 
 const $ = <T extends HTMLElement = HTMLElement>(id: string) => document.getElementById(id) as T;
 const transcript = $("transcript");
 const input = $<HTMLTextAreaElement>("input");
 const sendBtn = $<HTMLButtonElement>("send");
 const statusEl = $("status");
+initWorking(statusEl);
 const popup = $("popup");
 
 let models: ModelInfo[] = [];
@@ -71,7 +73,7 @@ let statusTimer = 0;
 function status(text: string, sticky = false) {
   statusEl.textContent = text;
   clearTimeout(statusTimer);
-  if (text && !sticky) statusTimer = window.setTimeout(() => (statusEl.textContent = running ? "Working…" : ""), 4000);
+  if (text && !sticky) statusTimer = window.setTimeout(() => (statusEl.textContent = ""), 4000);
 }
 
 async function checkBackends() {
@@ -553,8 +555,8 @@ function setRunning(on: boolean) {
   sendBtn.classList.toggle("stop", on);
   sendBtn.textContent = on ? "■" : "↑";
   sendBtn.title = on ? "Stop (Esc)" : "Send (Enter)";
-  if (!on) status("");
-  else status("Working…", true);
+  // While it runs, the working readout (ui/working.ts) says what it's doing.
+  status("");
 }
 
 sendBtn.onclick = () => {
@@ -918,6 +920,7 @@ async function send() {
 async function run(s: Session, model: ModelInfo) {
   running = new AbortController();
   setRunning(true);
+  startWork(model.name);
   const calls = new Map<string, ReturnType<typeof toolCard>>();
   const ui: AgentUI = {
     assistant(msg) {
@@ -947,7 +950,10 @@ async function run(s: Session, model: ModelInfo) {
       changes.setSession(s);
     },
     status(t) {
-      status(t || "Working…", true);
+      status(t);
+    },
+    step(t, tool, who) {
+      workStep(t, tool, who);
     },
     save() {
       void saveSession(s);
@@ -971,6 +977,7 @@ async function run(s: Session, model: ModelInfo) {
   } finally {
     running = null;
     setRunning(false);
+    stopWork();
     await saveSession(s);
     void drawSessions();
     drawCtx();
