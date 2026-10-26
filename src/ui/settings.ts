@@ -131,7 +131,13 @@ export function openSettings(
   form.append(labelled("Free VRAM when switching servers", "unload Ollama before a llama.cpp model and back. Turn on with one GPU", swap));
 
   form.append(h("h3", "", "Custom API (Cloud / Free Tiers)"));
-  form.append(h("p", "hint", "Connect an OpenAI-compatible endpoint like Google AI Studio (Gemini), Groq, or OpenRouter for difficult tasks."));
+  form.append(
+    h(
+      "p",
+      "hint",
+      "Connect an OpenAI-compatible endpoint like Google AI Studio (Gemini), Groq or OpenRouter for difficult tasks. Your prompts and the code the agent reads go to that service; leave the address empty to stay fully local. The key is saved in this PC's settings file.",
+    ),
+  );
   const customUrl = h("input") as HTMLInputElement;
   customUrl.value = settings.customApiUrl;
   customUrl.placeholder = "https://generativelanguage.googleapis.com/v1beta/openai";

@@ -87,7 +87,20 @@ async function checkBackends() {
       return false;
     }
   };
-  const [o, l, t] = await Promise.all([ping(`${OLLAMA}/api/version`), ping(`${LLAMA}/models`), ping(`${MCPO}/openapi.json`)]);
+  // The cloud service, when one is set in Settings: up when it answers its model list with the key.
+  const cloud = settings.customApiUrl
+    ? (async () => {
+        try {
+          const c = new AbortController();
+          setTimeout(() => c.abort(), 4000);
+          const headers: Record<string, string> = settings.customApiKey ? { Authorization: `Bearer ${settings.customApiKey}` } : {};
+          return (await http(`${settings.customApiUrl}/models`, { headers, signal: c.signal })).ok;
+        } catch {
+          return false;
+        }
+      })()
+    : Promise.resolve(null);
+  const [o, l, t, cl] = await Promise.all([ping(`${OLLAMA}/api/version`), ping(`${LLAMA}/models`), ping(`${MCPO}/openapi.json`), cloud]);
   el.innerHTML = "";
   for (const [name, ok, hint] of [
     ["Ollama", o, ":11434"],
@@ -96,6 +109,11 @@ async function checkBackends() {
   ] as const) {
     const s = h("span", `svc ${ok ? "up" : "down"}`, name);
     s.title = `${name} ${hint}: ${ok ? "running" : "not reachable. Start the Workstation (start-all.ps1)"}`;
+    el.append(s);
+  }
+  if (cl !== null) {
+    const s = h("span", `svc ${cl ? "up" : "down"}`, "Cloud");
+    s.title = `Custom API ${settings.customApiUrl}: ${cl ? "answering" : "not answering. Check the address and key in Settings"}`;
     el.append(s);
   }
   if (!o || !l) {
@@ -971,7 +989,11 @@ async function run(s: Session, model: ModelInfo) {
     await runAgent(s, model, ui, running.signal);
   } catch (e) {
     const err = h("div", "turn error");
-    err.textContent = `Error: ${errMsg(e)}${errMsg(e) === "not reachable" ? ` — is ${model.backend === "llama" ? "llama.cpp (:8081)" : "Ollama (:11434)"} running? Start the Workstation.` : ""}`;
+    const hint =
+      model.backend === "custom"
+        ? " — check the Custom API address and key in Settings, and that this PC is online."
+        : ` — is ${model.backend === "llama" ? "llama.cpp (:8081)" : "Ollama (:11434)"} running? Start the Workstation.`;
+    err.textContent = `Error: ${errMsg(e)}${errMsg(e) === "not reachable" ? hint : ""}`;
     transcript.append(err);
     scroll();
   } finally {

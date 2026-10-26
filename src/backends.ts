@@ -95,6 +95,27 @@ async function getJson(url: string, timeoutMs = 2500, headers?: Record<string, s
   }
 }
 
+const GEMINI_CTX = 1_048_576;
+const CLOUD_CTX = 131_072; // when the service doesn't say: most cloud chat models take at least this
+
+const host = (url: string) => {
+  try {
+    return new URL(url).hostname.replace(/^(www|api)\./, "");
+  } catch {
+    return "Cloud";
+  }
+};
+
+/** A cloud model's context and whether it sees pictures, from what its /models entry says (OpenRouter gives
+ *  context_length and input_modalities, Groq context_window, Google nothing), so auto-compact starts at the right size
+ *  and pictures only go to models that read them. */
+export function cloudLimits(m: any, id: string): { ctx: number; vision: boolean } {
+  const ctx = Number(m?.context_length ?? m?.context_window ?? m?.top_provider?.context_length) || (/gemini/i.test(id) ? GEMINI_CTX : CLOUD_CTX);
+  const modalities: string[] | undefined = m?.architecture?.input_modalities;
+  const vision = modalities ? modalities.includes("image") : /gemini|gpt-4o|gpt-4\.1|gpt-5|claude|vision|-vl|llama-4/i.test(id);
+  return { ctx, vision };
+}
+
 export async function listModels(): Promise<{ models: ModelInfo[]; ollama: boolean; llama: boolean; custom?: boolean }> {
   const models: ModelInfo[] = [];
   let ollama = false;
@@ -118,12 +139,13 @@ export async function listModels(): Promise<{ models: ModelInfo[]; ollama: boole
         const rawId = m.id ?? "";
         const id = rawId.replace(/^models\//, "");
         if (/embedding|tts|transcribe|live|image|banana|aqa|veo|lyria|robotics/i.test(id)) continue;
-        add(id, "custom", "Custom API · Cloud", 1000000, true);
+        const { ctx, vision } = cloudLimits(m, id);
+        add(id, "custom", `${host(customUrl)} · ${Math.round(ctx / 1024)}k ctx`, ctx, vision);
       }
     } catch {
       if (/google|generativelanguage/i.test(settings.customApiUrl)) {
         custom = true;
-        add("gemini-3.5-flash", "custom", "Google AI Studio · 1000k ctx", 1000000, true);
+        add("gemini-3.5-flash", "custom", "Google AI Studio · 1024k ctx", GEMINI_CTX, true);
       }
     }
   };
@@ -211,7 +233,7 @@ function toOpenAI(m: ChatMessage) {
   };
 }
 
-function prepareOpenAIMessages(messages: ChatMessage[], isCustom: boolean): any[] {
+export function prepareOpenAIMessages(messages: ChatMessage[], isCustom: boolean): any[] {
   if (!isCustom) return messages.map(toOpenAI);
   // For custom endpoints (like Google Gemini), any tool calls lacking a cryptographic thought_signature
   // (e.g. from earlier turns run on local models) cause a 400 error.
