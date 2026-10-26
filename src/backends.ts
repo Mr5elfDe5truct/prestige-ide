@@ -21,7 +21,7 @@ export function errMsg(e: unknown): string {
   return raw || "unknown error";
 }
 
-export type Backend = "ollama" | "llama";
+export type Backend = "ollama" | "llama" | "custom";
 
 export interface ModelInfo {
   key: string; // backend:id
@@ -38,6 +38,7 @@ export interface ToolCall {
   id: string;
   name: string;
   arguments: any;
+  extra_content?: any;
 }
 
 export interface ChatMessage {
@@ -58,6 +59,9 @@ export interface StreamStats {
 
 // Friendly names for the Workstation's models. Unknown models still show by their raw id.
 const KNOWN: { match: RegExp; name: string; hide?: boolean }[] = [
+  { match: /gemini-3\.5-flash/i, name: "Gemini 3.5 Flash (Google Cloud)" },
+  { match: /gemini-3\.8-flash/i, name: "Gemini 3.8 Flash (Google Cloud)" },
+  { match: /gemini-2\.5-pro/i, name: "Gemini 2.5 Pro (Google Cloud)" },
   { match: /qwen3\.6-35b/i, name: "Qwen3.6 35B Heretic" },
   { match: /qwen3\.8-27b.*2gpu/i, name: "Qwen3.8 27B Uncensored · 2 GPUs" },
   { match: /qwen3\.8-27b/i, name: "Qwen3.8 27B Uncensored" },
@@ -79,11 +83,11 @@ const KNOWN: { match: RegExp; name: string; hide?: boolean }[] = [
 ];
 const UNCENSORED = /uncensored|abliterat|heretic|hauhau|dolphin|hermes|lexi|josiefied|huihui/i;
 
-async function getJson(url: string, timeoutMs = 2500): Promise<any> {
+async function getJson(url: string, timeoutMs = 2500, headers?: Record<string, string>): Promise<any> {
   const ctl = new AbortController();
   const t = setTimeout(() => ctl.abort(), timeoutMs);
   try {
-    const r = await http(url, { signal: ctl.signal });
+    const r = await http(url, { headers, signal: ctl.signal });
     if (!r.ok) throw new Error(`${r.status}`);
     return await r.json();
   } finally {
@@ -91,16 +95,39 @@ async function getJson(url: string, timeoutMs = 2500): Promise<any> {
   }
 }
 
-export async function listModels(): Promise<{ models: ModelInfo[]; ollama: boolean; llama: boolean }> {
+export async function listModels(): Promise<{ models: ModelInfo[]; ollama: boolean; llama: boolean; custom?: boolean }> {
   const models: ModelInfo[] = [];
   let ollama = false;
   let llama = false;
+  let custom = false;
   const add = (id: string, backend: Backend, detail: string, ctx: number, vision: boolean) => {
     const k = KNOWN.find((m) => m.match.test(id));
     if (k?.hide) return;
     models.push({ key: `${backend}:${id}`, id, backend, name: k?.name ?? id, detail, ctx, vision, uncensored: UNCENSORED.test(id) });
   };
-  const [o, l] = await Promise.allSettled([getJson(`${OLLAMA}/api/tags`), getJson(`${LLAMA}/models`)]);
+  const customFetch = async () => {
+    if (!settings.customApiUrl) return;
+    const customUrl = settings.customApiUrl.replace(/\/+$/, "");
+    const headers: Record<string, string> = {};
+    if (settings.customApiKey) headers["Authorization"] = `Bearer ${settings.customApiKey}`;
+    try {
+      const res = await getJson(`${customUrl}/models`, 3000, headers);
+      custom = true;
+      const data = res?.data ?? [];
+      for (const m of data) {
+        const rawId = m.id ?? "";
+        const id = rawId.replace(/^models\//, "");
+        if (/embedding|tts|transcribe|live|image|banana|aqa|veo|lyria|robotics/i.test(id)) continue;
+        add(id, "custom", "Custom API · Cloud", 1000000, true);
+      }
+    } catch {
+      if (/google|generativelanguage/i.test(settings.customApiUrl)) {
+        custom = true;
+        add("gemini-3.5-flash", "custom", "Google AI Studio · 1000k ctx", 1000000, true);
+      }
+    }
+  };
+  const [o, l] = await Promise.allSettled([getJson(`${OLLAMA}/api/tags`), getJson(`${LLAMA}/models`), customFetch()]);
   if (o.status === "fulfilled") {
     ollama = true;
     for (const m of o.value.models ?? []) {
@@ -118,12 +145,12 @@ export async function listModels(): Promise<{ models: ModelInfo[]; ollama: boole
       add(m.id, "llama", `llama.cpp · ${Math.round(ctx / 1024)}k ctx · ${state}`, ctx, (m.architecture?.input_modalities ?? []).includes("image"));
     }
   }
-  return { models, ollama, llama };
+  return { models, ollama, llama, custom };
 }
 
 /** On a single card, Ollama and a big llama.cpp model can't share VRAM: free the other side first. */
 async function freeOther(backend: Backend) {
-  if (!settings.swapBackends) return;
+  if (backend === "custom" || !settings.swapBackends) return;
   try {
     if (backend === "llama") {
       const ps = await getJson(`${OLLAMA}/api/ps`);
@@ -169,7 +196,12 @@ function toOpenAI(m: ChatMessage) {
     return {
       role: m.role,
       content: m.content || null,
-      tool_calls: m.tool_calls.map((c) => ({ id: c.id, type: "function", function: { name: c.name, arguments: JSON.stringify(c.arguments ?? {}) } })),
+      tool_calls: m.tool_calls.map((c) => ({
+        id: c.id,
+        type: "function",
+        function: { name: c.name, arguments: JSON.stringify(c.arguments ?? {}) },
+        ...(c.extra_content ? { extra_content: c.extra_content } : {}),
+      })),
     };
   }
   if (!m.images?.length) return { role: m.role, content: m.content };
@@ -177,6 +209,69 @@ function toOpenAI(m: ChatMessage) {
     role: m.role,
     content: [{ type: "text", text: m.content }, ...m.images.map((b64) => ({ type: "image_url", image_url: { url: `data:image/jpeg;base64,${b64}` } }))],
   };
+}
+
+function prepareOpenAIMessages(messages: ChatMessage[], isCustom: boolean): any[] {
+  if (!isCustom) return messages.map(toOpenAI);
+  // For custom endpoints (like Google Gemini), any tool calls lacking a cryptographic thought_signature
+  // (e.g. from earlier turns run on local models) cause a 400 error.
+  // Convert those unsigned tool calls and their results into clean dialog text.
+  const unsignedCallIds = new Set<string>();
+  for (const m of messages) {
+    if (m.role === "assistant" && m.tool_calls?.length) {
+      for (const c of m.tool_calls) {
+        if (!c.extra_content?.google?.thought_signature) {
+          unsignedCallIds.add(c.id);
+        }
+      }
+    }
+  }
+
+  const out: any[] = [];
+  for (const m of messages) {
+    if (m.role === "assistant" && m.tool_calls?.length) {
+      const allSigned = m.tool_calls.every((c) => !unsignedCallIds.has(c.id));
+      if (allSigned) {
+        out.push({
+          role: "assistant",
+          content: m.content || null,
+          tool_calls: m.tool_calls.map((c) => ({
+            id: c.id,
+            type: "function",
+            function: { name: c.name, arguments: JSON.stringify(c.arguments ?? {}) },
+            ...(c.extra_content ? { extra_content: c.extra_content } : {}),
+          })),
+        });
+      } else {
+        const desc = m.tool_calls.map((c) => `[Called ${c.name} with arguments ${JSON.stringify(c.arguments ?? {})}]`).join("\n");
+        out.push({
+          role: "assistant",
+          content: [m.content, desc].filter(Boolean).join("\n"),
+        });
+      }
+      continue;
+    }
+    if (m.role === "tool") {
+      if (m.tool_call_id && unsignedCallIds.has(m.tool_call_id)) {
+        out.push({
+          role: "user",
+          content: `[Tool result for ${m.tool_name ?? "command"}]:\n${m.content}`,
+        });
+      } else {
+        out.push({ role: "tool", tool_call_id: m.tool_call_id, content: m.content });
+      }
+      continue;
+    }
+    if (!m.images?.length) {
+      out.push({ role: m.role, content: m.content });
+      continue;
+    }
+    out.push({
+      role: m.role,
+      content: [{ type: "text", text: m.content }, ...m.images.map((b64) => ({ type: "image_url", image_url: { url: `data:image/jpeg;base64,${b64}` } }))],
+    });
+  }
+  return out;
 }
 
 function toOllama(m: ChatMessage) {
@@ -279,22 +374,26 @@ export async function streamChat(
       }
     });
   } else {
-    await makeRoomFor(model.id);
-    const r = await http(`${LLAMA}/chat/completions`, {
+    const isCustom = model.backend === "custom";
+    if (!isCustom) await makeRoomFor(model.id);
+    const url = isCustom ? `${settings.customApiUrl.replace(/\/+$/, "")}/chat/completions` : `${LLAMA}/chat/completions`;
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (isCustom && settings.customApiKey) headers["Authorization"] = `Bearer ${settings.customApiKey}`;
+    const r = await http(url, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({
         model: model.id,
-        messages: messages.map(toOpenAI),
+        messages: prepareOpenAIMessages(messages, isCustom),
         stream: true,
         stream_options: { include_usage: true },
         ...(opts.temperature !== undefined ? { temperature: opts.temperature } : {}),
-        ...(opts.think === false ? { chat_template_kwargs: { enable_thinking: false, reasoning_effort: "none" } } : {}),
+        ...(!isCustom && opts.think === false ? { chat_template_kwargs: { enable_thinking: false, reasoning_effort: "none" } } : {}),
         ...withTools,
       }),
       signal,
     });
-    if (!r.ok || !r.body) throw new Error(`llama.cpp answered ${r.status}: ${(await r.text()).slice(0, 300)}`);
+    if (!r.ok || !r.body) throw new Error(`${isCustom ? "Custom API" : "llama.cpp"} answered ${r.status}: ${(await r.text()).slice(0, 300)}`);
     const partial: { id: string; name: string; args: string }[] = [];
     await readLines(r.body, (line) => {
       if (!line.startsWith("data:")) return;
@@ -317,6 +416,7 @@ export async function streamChat(
         if (tc.id) partial[i].id = tc.id;
         if (tc.function?.name) partial[i].name += tc.function.name;
         if (tc.function?.arguments) partial[i].args += tc.function.arguments;
+        if (tc.extra_content) (partial[i] as any).extra_content = tc.extra_content;
       }
       const t = j.timings;
       if (t?.predicted_n) {
@@ -326,7 +426,16 @@ export async function streamChat(
         final = { tokens: j.usage.completion_tokens, tps: secs ? j.usage.completion_tokens / secs : 0, seconds: (performance.now() - start) / 1000, promptTokens: j.usage.prompt_tokens };
       }
     });
-    for (const p of partial) if (p?.name) toolCalls.push({ id: p.id, name: p.name, arguments: parseArgs(p.args) });
+    for (const p of partial) {
+      if (p?.name) {
+        toolCalls.push({
+          id: p.id,
+          name: p.name,
+          arguments: parseArgs(p.args),
+          ...((p as any).extra_content ? { extra_content: (p as any).extra_content } : {}),
+        });
+      }
+    }
   }
   const secs = first ? (performance.now() - first) / 1000 : 0;
   let stats: StreamStats = final ?? { tokens: chunks, tps: secs ? chunks / secs : 0, seconds: (performance.now() - start) / 1000 };

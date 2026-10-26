@@ -31,6 +31,8 @@ export interface Settings {
   schedules: import("./schedules").Schedule[]; // scheduled agent runs (schedules.ts)
   workstation: string; // the Custom AI Workstation folder; empty: %USERPROFILE%\RG Studios\Workstation
   trustedConfigs: Record<string, string>; // project settings files the user trusted: lower-cased path -> content hash
+  customApiUrl: string; // OpenAI-compatible endpoint, e.g. https://generativelanguage.googleapis.com/v1beta/openai
+  customApiKey: string;
 }
 
 export const settings: Settings = {
@@ -58,6 +60,8 @@ export const settings: Settings = {
   schedules: [],
   workstation: "",
   trustedConfigs: {},
+  customApiUrl: "",
+  customApiKey: "",
 };
 
 export async function loadSettings(): Promise<boolean> {
